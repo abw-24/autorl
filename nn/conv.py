@@ -4,22 +4,27 @@
 """
 
 import tensorflow as tf
-from tf_utilities import *
+from tf_utilities import tfUtilities
 
 
-class convNet():
+class convNet(tfUtilities):
 
-    def __init__(self, config_map):
+    def __init__(self, x_placeholder, y_placeholder, config_map):
 
+        self._x = x_placeholder
+        self._y = y_placeholder
         self._layers = config_map['layers']
+        self._loss_type = config_map['loss']
         self._loss = None
         self._parameters = []
 
-    def _build_graph(self):
+    def _forward_pass(self):
 
-        _layer_ops = {
+        op = self._x
+
+        layer_ops_ = {
             "conv": self._conv_layer,
-            "relu": tf.nn.relu_layer,
+            "relu": self._relu_layer,
             "max-pool":self._max_pool_layer
         }
 
@@ -28,18 +33,30 @@ class convNet():
             layer_type = layer['layer_type']
             layer_specs = layer['specs']
 
+            operator_ = layer_ops_[layer_type]
+            layer_namespace = "layer_" + str(index)
+
+            op = operator_(op, layer_specs, layer_namespace)
+
+        return op
+
     @property
     def loss(self):
 
         if self._loss is None:
-            self._compute_loss()
+            forward_op = self._forward_pass()
+            self._loss = self.compute_loss(forward_op, self._y, self._loss_type)
 
         return self._loss
 
     @staticmethod
-    def _conv_layer(in_op, param_specs):
+    def _conv_layer(in_op, param_specs, param_namespace):
         pass
 
     @staticmethod
-    def _max_pool_layer(in_op, param_specs):
+    def _max_pool_layer(in_op, param_specs, param_namespace):
+        pass
+
+    @staticmethod
+    def _relu_layer(in_op, param_specs, param_namespace):
         pass
