@@ -1,6 +1,7 @@
 
 """
--- Class for computing symbolic loss for an arbitrary depth conv net
+-- Constructor class for computing symbolic loss for a JSON specified supervised
+convolutional neural network. Conventions for specifying layers and options below:
 """
 
 import tensorflow as tf
