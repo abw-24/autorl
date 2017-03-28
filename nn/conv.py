@@ -5,7 +5,9 @@ convolutional neural network. Conventions for specifying layers and options belo
 """
 
 import tensorflow as tf
+
 from tf_utilities import tfUtilities
+from utils import *
 
 
 class convNet(tfUtilities):
@@ -19,6 +21,10 @@ class convNet(tfUtilities):
         self._loss = None
         self._parameters = []
 
+        self._warning = 'Not all parameters have been set for this layer. Using default.'
+        self._exception = 'Unrecognized keyword.'
+        self._except_exit = lambda x: 'Missing required parameter: {}'.format(x)
+
     def _forward_pass(self):
 
         op = self._x
@@ -31,24 +37,15 @@ class convNet(tfUtilities):
 
         for index, layer in enumerate(self._layers):
 
-            layer_type = layer['layer_type']
-            layer_specs = layer['specs']
-
+            # pop off the layer type, and send the rest of the layer
+            # dictionary as specs to the layer operator
+            layer_type = layer.pop('layer_type')
             operator_ = layer_ops_[layer_type]
             layer_namespace = "layer_" + str(index)
 
-            op = operator_(op, layer_specs, layer_namespace)
+            op = operator_(op, layer, layer_namespace)
 
         return op
-
-    @property
-    def loss(self):
-
-        if self._loss is None:
-            forward_op = self._forward_pass()
-            self._loss = self.compute_loss(forward_op, self._y, self._loss_type)
-
-        return self._loss
 
     @staticmethod
     def _conv_layer(in_op, param_specs, param_namespace):
@@ -61,3 +58,12 @@ class convNet(tfUtilities):
     @staticmethod
     def _relu_layer(in_op, param_specs, param_namespace):
         pass
+
+    @property
+    def loss(self):
+
+        if self._loss is None:
+            forward_op = self._forward_pass()
+            self._loss = self.compute_loss(forward_op, self._y, self._loss_type)
+
+        return self._loss
