@@ -27,13 +27,3 @@ class layerParse(object):
         out = []
         for l in self._raw_layers:
             tmp_layer = deepcopy(l)
-            
-
-
-
-
-
-
-
-
-
