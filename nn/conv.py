@@ -4,26 +4,50 @@
 convolutional neural network. Conventions for specifying layers and options below:
 """
 
+import sys
 import tensorflow as tf
 
-from tf_utilities import tfUtilities
+from tf_utils import tfUtilities
 from utils import *
 
+"""
+# Store layers weight & bias
+weights = {
+    # 5x5 conv, 1 input, 32 outputs
+    'wc1': tf.Variable(tf.random_normal([5, 5, 1, 32])),
+    # 5x5 conv, 32 inputs, 64 outputs
+    'wc2': tf.Variable(tf.random_normal([5, 5, 32, 64])),
+    # fully connected, 7*7*64 inputs, 1024 outputs
+    'wd1': tf.Variable(tf.random_normal([7*7*64, 1024])),
+    # 1024 inputs, 10 outputs (class prediction)
+    'out': tf.Variable(tf.random_normal([1024, n_classes]))
+}
 
-class convNet(tfUtilities):
+biases = {
+    'bc1': tf.Variable(tf.random_normal([32])),
+    'bc2': tf.Variable(tf.random_normal([64])),
+    'bd1': tf.Variable(tf.random_normal([1024])),
+    'out': tf.Variable(tf.random_normal([n_classes]))
+}
+"""
 
-    def __init__(self, x_placeholder, y_placeholder, config_map):
+
+class ConvNet(tfUtilities):
+
+    def __init__(self, x_placeholder, y_placeholder, config_map, log=None):
 
         self._x = x_placeholder
         self._y = y_placeholder
         self._layers = config_map['layers']
         self._loss_type = config_map['loss']
+        self._log = log
         self._loss = None
         self._parameters = []
 
-        self._warning = 'Not all parameters have been set for this layer. Using default.'
-        self._exception = 'Unrecognized keyword.'
-        self._except_exit = lambda x: 'Missing required parameter: {}'.format(x)
+    def _layer_key_error(self, layer_namespace):
+        print 'Could not find a needed key for layer {}'.format(layer_namespace)
+        if self._log is not None:
+            self._log.info('Could not find a needed key for layer {}'.format(layer_namespace))
 
     def _forward_pass(self):
 
@@ -31,7 +55,7 @@ class convNet(tfUtilities):
 
         layer_ops_ = {
             "conv": self._conv_layer,
-            "relu": self._relu_layer,
+            "fully-connected"
             "max-pool":self._max_pool_layer
         }
 
@@ -47,16 +71,30 @@ class convNet(tfUtilities):
 
         return op
 
-    @staticmethod
-    def _conv_layer(in_op, param_specs, param_namespace):
-        pass
+    def _conv_layer(self, in_op, param_specs, param_namespace, log=None):
+        try:
+            strides = param_specs['strides']
+        except KeyError:
+            self._layer_key_error(param_namespace)
+            sys.exit()
 
-    @staticmethod
-    def _max_pool_layer(in_op, param_specs, param_namespace):
-        pass
+        with param_namespace as name:
+            weight_matrix = tf.Variable(tf.random_normal([5, 5, 1, 32]))
+            bias_vector = tf.Variable(tf.random_normal([32]))
 
-    @staticmethod
-    def _relu_layer(in_op, param_specs, param_namespace):
+        out_op = tf.nn.conv2d(in_op, weight_matrix, strides=[1, strides, strides, 1], padding='SAME')
+        out_op = tf.nn.bias_add(out_op, bias_vector)
+
+        return tf.nn.relu(out_op)
+
+    def _max_pool_layer(self, in_op, param_specs, param_namespace, log=None):
+        k = param_specs['strides']
+        with param_namespace as name:
+            out_op = tf.nn.max_pool(in_op, ksize=[1, k, k, 1], strides=[1, k, k, 1],
+                                    padding='SAME')
+            return out_op
+
+    def _connected_layer(in_op, param_specs, param_namespace, log=None):
         pass
 
     @property

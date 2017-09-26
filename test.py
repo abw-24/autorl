@@ -7,9 +7,9 @@
 import gym
 import argparse as ap
 
-from nn import conv, mlp
+from nn import conv, nn
 
-N_EPISODES = 10
+N_EPISODES = 5
 N_STEPS = 1000
 
 # supported_architectures = ("a2c", "dqn", "random")
@@ -20,9 +20,9 @@ N_STEPS = 1000
 
 env = gym.make('CartPole-v0')
 
-env.reset()
-
 for e in xrange(N_EPISODES):
+
+    env.reset()
 
     for _ in xrange(N_STEPS):
         env.render()
