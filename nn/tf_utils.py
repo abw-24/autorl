@@ -1,7 +1,7 @@
 
 """
--- Various utilities for easily specifying and applying different activation
- functions and optimization algorithms via string arguments
+-- Class tfUtilities houses base static methods -
+-- Inherited by all graph constructor classes
 """
 
 import tensorflow as tf
@@ -9,7 +9,7 @@ import cPickle as pkl
 import sys
 
 
-class tfUtilities():
+class tfUtilities(object):
 
     @staticmethod
     def build_placeholders(x_dim, batch_size):
