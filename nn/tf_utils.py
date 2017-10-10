@@ -12,17 +12,16 @@ import sys
 class tfUtilities(object):
 
     @staticmethod
-    def build_placeholders(x_dim, batch_size):
+    def build_placeholders(x_dim):
         """
 
         :param x_dim:
-        :param batch_size:
         :return:
         """
 
-        x_placeholder = tf.placeholder(tf.float32, shape=(batch_size, x_dim))
+        x_placeholder = tf.placeholder(tf.float32, shape=(None, x_dim))
 
-        y_placeholder = tf.placeholder(tf.int32, shape=(batch_size))
+        y_placeholder = tf.placeholder(tf.int32, shape=(None))
 
         return x_placeholder, y_placeholder
 

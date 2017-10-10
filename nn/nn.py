@@ -19,35 +19,136 @@ import numpy as np
 import math
 
 
-class LayerCompute(object):
+class LayerCompute(tfUtilities):
 
-    def __init__(self, layer_type):
+    def __init__(self, layer_configuration, in_weights=None):
 
-        pass
+        self._layer_configs = layer_configuration
+        self._in_weights = in_weights
 
-    def _input_layer(self, layer_op, previous_dim):
+        assert self._layer_configs[0]["type"] == "input", "First layer must be of type 'input'"
+        assert self._layer_configs[-1]["type"] == "output", "Last layer must be of type 'output'"
 
-        assert previous_dim is None, "Input layer specified in layer past the first. Exiting."
+        self._input_dim = self._layer_configs[0]["dim"]
+        self._output_nodes = self._layer_configs[-1]["dim"]
 
-    def _dense_hidden_layer(self, layer_op, previous_dim):
-        pass
+        # now just take hidden layers
+        self._layer_configs = self._layer_configs[1:]
 
-    def _convolution_layer(self, layer_op, previous_dim):
+        # if we have input weights, should match up after removing input layer configuration
+        if self._in_weights is not None:
+            assert len(self._in_weights) == len(self._layer_configs), "Input weights must have length n_layers - 1"
+
+        self._x_placeholder, self._y_placeholder = self.build_placeholders(self._input_dim)
+
+        self._layer_compute_ops = {
+            "input": self._input_layer,
+            "output": self._output_layer,
+            "dense": self._dense_hidden_layer,
+            "conv": self._convolution_layer
+        }
+
+        self._layer_weights = []
+
+        self._previous_dim = None
+        self._i = 0
+
+    def _input_layer(self):
+
+        assert self._i == 0, "Input layer specified incorrectly. Exiting."
+
+        self._previous_dim = self._input_dim
+        self._i += 1
+
+        return self._x_placeholder
+
+    def _dense_hidden_layer(self, in_graph, layer_config, in_w=None):
+
+        _col_dim = layer_config["dim"]
+        _act = layer_config["activation"]
+
+        with tf.name_scope("dense_" + str(self._i) + "_"):
+
+            if in_w is None:
+                # using truncated normals for weight initialization, zeros for biases
+                w_dim = [self._previous_dim, _col_dim]
+                sd = 1.0 / math.sqrt(float(self._previous_dim))
+                weights = tf.Variable(tf.truncated_normal(w_dim, stddev=sd, name='weights'))
+                biases = tf.Variable(tf.zeros([_col_dim]), name='biases')
+
+            else:
+                weights = tf.Variable(in_w["weights"].astype(np.float32), name='weights')
+                biases = tf.Variable(in_w["biases"].astype(np.float32), name='biases')
+
+            self._layer_weights.append({"weights": weights, "biases": biases})
+
+            linear_op = tf.matmul(in_graph, weights) + biases
+            nonlinear_op = self.activate(linear_op, _act)
+
+        self._i += 1
+        self._previous_dim = _col_dim
+
+        return nonlinear_op
+
+    def _convolution_layer(self, in_graph, layer_config, in_w=None):
         raise NotImplementedError('Conv nets not yet available')
 
-    def _pooling_layer(self, layer_op, previous_dim):
+    def _pooling_layer(self, in_graph, layer_config, in_w=None):
         raise NotImplementedError('Conv nets not yet available')
 
-    def _output_layer(self, layer_op, previous_dim):
-        pass
+    def _output_layer(self, in_graph, layer_config, in_w=None):
 
-    def compute(self, layer_op, previous_dim):
-        pass
+        _output_dim = layer_config["dim"]
+
+        with tf.name_scope("output_" + str(self._i) + "_"):
+
+            if in_w is None:
+                # using truncated normals for weight initialization, zeros for biases
+                w_dim = [self._previous_dim, _output_dim]
+                sd = 1.0 / math.sqrt(float(self._previous_dim))
+                weights = tf.Variable(tf.truncated_normal(w_dim, stddev=sd, name='weights'))
+                biases = tf.Variable(tf.zeros([_output_dim]), name='biases')
+
+            else:
+                weights = tf.Variable(in_w["weights"].astype(np.float32), name='weights')
+                biases = tf.Variable(in_w["biases"].astype(np.float32), name='biases')
+
+            self._layer_weights.append({"weights": weights, "biases": biases})
+
+            linear_op = tf.matmul(in_graph, weights) + biases
+
+        self._i += 1
+        self._previous_dim = _output_dim
+
+        return linear_op
+
+    def _layer_compute(self, in_graph, layer_config, in_w=None):
+
+        _type = layer_config['type']
+        _tmp_layer_op = self._layer_compute_ops[_type]
+
+        # apply op to graph
+        return _tmp_layer_op(in_graph, layer_config, in_w)
+
+    def _model_compute(self):
+
+        # run the input layer
+        _out_graph = self._input_layer()
+
+        for i , c in enumerate(self._layer_configs):
+
+            if self._in_weights is not None:
+                _out_graph = self._layer_compute(_out_graph, c, self._in_weights[i])
+
+            else:
+                _out_graph = self._layer_compute(_out_graph, c)
+
+        return _out_graph
 
 
-class NN(tfUtilities):
+class NN(LayerCompute):
 
-    def __init__(self, x_placeholder, y_placeholder, model_ops, weights=None, biases=None, wait=False):
+    def __init__(self, model_ops, in_weights=None, wait=False):
         """
         Builds the computatuional graph for a multi-layer perception
 
@@ -57,10 +158,8 @@ class NN(tfUtilities):
         :return:
         """
 
-        self.x_placeholder = x_placeholder
-        self.y_placeholder = y_placeholder
+        super(NN, self).__init__(model_ops['layers'], in_weights)
 
-        self._layers = model_ops['layers']
         self._ops = model_ops['options']
 
         # parse global architecture options
@@ -69,61 +168,9 @@ class NN(tfUtilities):
         # set up instance objects to be filled with later
         self._loss = None
         self._y_hat = None
-        self.inWeights = weights
-        self.inBiases = biases
-        self._weights = []
-        self._biases = []
 
         if not wait:
             self.build()
-
-    def _layer_build(self):
-        """
-
-        :return: hidden tensor
-        """
-
-        layer_compute = None
-
-        previous_dim = None
-
-        # build weight matrices and bias vectors for each specified layer
-        for index, layer_map in enumerate(self._layers):
-
-            i_scope = 'layer_' + str(index)
-
-            _type = layer_map['type']
-            _dim = layer_map['dim']
-            _act = layer_map['activation']
-
-            with tf.name_scope(i_scope):
-
-                if self.inWeights is None:
-                    # using truncated normals for weight initialization, zeros for biases
-                    weights = tf.Variable(tf.truncated_normal([row_dim, col_dim],
-                                                              stddev=1.0 / math.sqrt(float(row_dim))),
-                                          name='weights')
-                else:
-                    weights = tf.Variable(self.inWeights[index].astype(np.float32), name='weights')
-
-                self._weights.append(weights)
-
-                if self.inBiases is None:
-                    biases = tf.Variable(tf.zeros([col_dim]), name='biases')
-                else:
-                    biases = tf.Variable(self.inBiases[index].astype(np.float32), name='biases')
-
-                self._biases.append(biases)
-
-                previous_dim = _dim
-                previous_type = _type
-
-                linear_op = tf.matmul(layer_compute if layer_compute is not None else self.x_placeholder, weights)
-                linear_w_biases = linear_op + biases
-                non_linear_op = self.activate(linear_w_biases, h)
-                layer_compute = non_linear_op
-
-        return layer_compute
 
     def build(self):
         """
@@ -131,11 +178,9 @@ class NN(tfUtilities):
         :return:
         """
 
-        symbolic_hidden_transformation = self._hidden_layers()
-        self._y_hat = self._output_layer(symbolic_hidden_transformation)
+        self._y_hat = self._model_compute()
 
-        labels = self.y_placeholder
-        batch_loss = self.compute_loss(self._y_hat, labels, self._loss_type)
+        batch_loss = self.compute_loss(self._y_hat, self._y_placeholder, self._loss_type)
         self._loss = tf.reduce_mean(batch_loss, name=self._loss_type)
 
     @property
@@ -157,15 +202,7 @@ class NN(tfUtilities):
     @property
     def weights(self):
 
-        if len(self._weights) == 0:
+        if len(self._layer_weights) == 0:
             self.build()
 
-        return self._weights
-
-    @property
-    def biases(self):
-
-        if len(self._biases) == 0:
-            self.build()
-
-        return self._biases
+        return self._layer_weights
