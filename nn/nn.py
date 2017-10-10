@@ -18,6 +18,10 @@ import numpy as np
 
 import math
 
+# todo: add conv/pool layers
+# todo: add autoencoder layers
+# todo: add training
+
 
 class LayerCompute(tfUtilities):
 
@@ -135,7 +139,7 @@ class LayerCompute(tfUtilities):
         # run the input layer
         _out_graph = self._input_layer()
 
-        for i , c in enumerate(self._layer_configs):
+        for i, c in enumerate(self._layer_configs):
 
             if self._in_weights is not None:
                 _out_graph = self._layer_compute(_out_graph, c, self._in_weights[i])
@@ -152,8 +156,8 @@ class NN(LayerCompute):
         """
         Builds the computatuional graph for a multi-layer perception
 
-        :param input_holder:
-        :param input_dim:
+        :param wait:
+        :param in_weights:
         :param model_ops:
         :return:
         """
