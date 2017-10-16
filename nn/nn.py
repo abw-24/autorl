@@ -44,7 +44,7 @@ class LayerCompute(tfUtilities):
         self._layer_compute_ops = {
             "input": self._input_layer,
             "output": self._output_layer,
-            "dense": self._dense_hidden_layer,
+            "dense": self._dense_layer,
             "conv": self._convolution_layer
         }
 
@@ -62,7 +62,14 @@ class LayerCompute(tfUtilities):
 
         return self._x_placeholder
 
-    def _dense_hidden_layer(self, in_graph, layer_config, in_w=None):
+    def _dense_layer(self, in_graph, layer_config, in_w=None):
+        """
+
+        :param in_graph:
+        :param layer_config:
+        :param in_w:
+        :return:
+        """
 
         _col_dim = layer_config["dim"]
         _act = layer_config["activation"]
@@ -83,46 +90,86 @@ class LayerCompute(tfUtilities):
             self._layer_weights.append({"weights": weights, "biases": biases})
 
             linear_op = tf.matmul(in_graph, weights) + biases
-            nonlinear_op = self.activate(linear_op, _act)
+
+            if _act != "none":
+                out_op = self.activate(linear_op, _act)
+            else:
+                out_op = linear_op
 
         self._i += 1
         self._previous_dim = _col_dim
 
-        return nonlinear_op
+        return out_op
 
     def _convolution_layer(self, in_graph, layer_config, in_w=None):
-        raise NotImplementedError('Conv nets not yet available')
+        """
 
-    def _pooling_layer(self, in_graph, layer_config, in_w=None):
-        raise NotImplementedError('Conv nets not yet available')
+        :param in_graph:
+        :param layer_config:
+        :param in_w:
+        :return:
+        """
 
-    def _output_layer(self, in_graph, layer_config, in_w=None):
+        # TODO: previous dim handling for conv layer
 
-        _output_dim = layer_config["dim"]
+        strides = layer_config['strides']
 
-        with tf.name_scope("output_" + str(self._i) + "_"):
+        with tf.name_scope("conv_" + str(self._i) + "_"):
 
             if in_w is None:
-                # using truncated normals for weight initialization, zeros for biases
-                w_dim = [self._previous_dim, _output_dim]
-                sd = 1.0 / math.sqrt(float(self._previous_dim))
-                weights = tf.Variable(tf.truncated_normal(w_dim, stddev=sd, name='weights'))
-                biases = tf.Variable(tf.zeros([_output_dim]), name='biases')
-
+                weights = tf.Variable(tf.random_normal([strides, strides, 1, 32]), name="weights")
+                biases = tf.Variable(tf.random_normal([32]), name="biases")
             else:
                 weights = tf.Variable(in_w["weights"].astype(np.float32), name='weights')
                 biases = tf.Variable(in_w["biases"].astype(np.float32), name='biases')
 
-            self._layer_weights.append({"weights": weights, "biases": biases})
+            conv_op = tf.nn.conv2d(in_graph, weights, strides=[1, strides, strides, 1], padding='SAME')
+            bias_conv_op = tf.nn.bias_add(conv_op, biases)
+            nonlinear_op = tf.nn.relu(bias_conv_op)
 
-            linear_op = tf.matmul(in_graph, weights) + biases
-
+        self._layer_weights.append({"weights": weights, "biases": biases})
         self._i += 1
-        self._previous_dim = _output_dim
 
-        return linear_op
+        return nonlinear_op
+
+    def _pooling_layer(self, in_graph, layer_config, in_w=None):
+        """
+
+        :param in_graph:
+        :param layer_config:
+        :param in_w:
+        :return:
+        """
+
+        strides = layer_config['strides']
+
+        with tf.name_scope("pool_" + str(self._i) + "_"):
+            out_op = tf.nn.max_pool(in_graph,
+                                    ksize=[1, strides, strides, 1], strides=[1, strides, strides, 1],
+                                    padding='SAME')
+        return out_op
+
+    def _output_layer(self, in_graph, layer_config, in_w=None):
+        """
+
+        :param in_graph:
+        :param layer_config:
+        :param in_w:
+        :return:
+        """
+
+        assert layer_config["activation"] == "none"
+
+        return self._dense_layer(in_graph, layer_config, in_w)
 
     def _layer_compute(self, in_graph, layer_config, in_w=None):
+        """
+
+        :param in_graph:
+        :param layer_config:
+        :param in_w:
+        :return:
+        """
 
         _type = layer_config['type']
         _tmp_layer_op = self._layer_compute_ops[_type]
@@ -131,11 +178,15 @@ class LayerCompute(tfUtilities):
         return _tmp_layer_op(in_graph, layer_config, in_w)
 
     def _model_compute(self):
+        """
+
+        :return:
+        """
 
         # run the input layer
         _out_graph = self._input_layer()
 
-        for i , c in enumerate(self._layer_configs):
+        for i, c in enumerate(self._layer_configs):
 
             if self._in_weights is not None:
                 _out_graph = self._layer_compute(_out_graph, c, self._in_weights[i])
@@ -152,8 +203,8 @@ class NN(LayerCompute):
         """
         Builds the computatuional graph for a multi-layer perception
 
-        :param input_holder:
-        :param input_dim:
+        :param wait:
+        :param in_weights:
         :param model_ops:
         :return:
         """

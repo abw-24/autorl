@@ -44,10 +44,7 @@ class ConvNet(tfUtilities):
         self._loss = None
         self._parameters = []
 
-    def _layer_key_error(self, layer_namespace):
-        print 'Could not find a needed key for layer {}'.format(layer_namespace)
-        if self._log is not None:
-            self._log.info('Could not find a needed key for layer {}'.format(layer_namespace))
+
 
     def _forward_pass(self):
 
@@ -72,20 +69,7 @@ class ConvNet(tfUtilities):
         return op
 
     def _conv_layer(self, in_op, param_specs, param_namespace, log=None):
-        try:
-            strides = param_specs['strides']
-        except KeyError:
-            self._layer_key_error(param_namespace)
-            sys.exit()
 
-        with param_namespace as name:
-            weight_matrix = tf.Variable(tf.random_normal([5, 5, 1, 32]))
-            bias_vector = tf.Variable(tf.random_normal([32]))
-
-        out_op = tf.nn.conv2d(in_op, weight_matrix, strides=[1, strides, strides, 1], padding='SAME')
-        out_op = tf.nn.bias_add(out_op, bias_vector)
-
-        return tf.nn.relu(out_op)
 
     def _max_pool_layer(self, in_op, param_specs, param_namespace, log=None):
         k = param_specs['strides']

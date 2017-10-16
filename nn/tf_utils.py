@@ -36,7 +36,8 @@ class tfUtilities(object):
 
         activation_functions_ = {"tanh": tf.tanh,
                                 "relu": tf.nn.relu,
-                                "sigmoid": tf.sigmoid}
+                                "sigmoid": tf.sigmoid,
+                                 "none": lambda x: x}
 
         try:
             activation = activation_functions_[activation_type]
