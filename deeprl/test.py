@@ -5,9 +5,6 @@
 """
 
 import gym
-import argparse as ap
-
-from nn import conv, nn
 
 N_EPISODES = 5
 N_STEPS = 1000
