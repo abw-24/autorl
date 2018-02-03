@@ -3,11 +3,7 @@
 """
 -- Constructor class for computing symbolic loss for an arbitrary network.
 Provides a caffe-like interface to Tensorflow in the sense that layers
- are JSON configurable. Conventions for layer specifications can be
- found in the README (under construction)
-
- # "layers"
- # "options"
+ are JSON configurable
 
 """
 
@@ -19,31 +15,16 @@ import numpy as np
 import math
 
 
-class LayerCompute(tfUtilities):
+class FeedForward(tfUtilities):
 
-    def __init__(self, layer_configuration, in_weights=None):
+    def __init__(self, layer_configuration, in_weights=None, in_graph=None):
 
         self._layer_configs = layer_configuration
         self._in_weights = in_weights
-
-        assert self._layer_configs[0]["type"] == "input", "First layer must be of type 'input'"
-        assert self._layer_configs[-1]["type"] == "output", "Last layer must be of type 'output'"
-
-        self._input_dim = self._layer_configs[0]["dim"]
-        self._output_nodes = self._layer_configs[-1]["dim"]
-
-        # now just take hidden layers
-        self._layer_configs = self._layer_configs[1:]
-
-        # if we have input weights, should match up after removing input layer configuration
-        if self._in_weights is not None:
-            assert len(self._in_weights) == len(self._layer_configs), "Input weights must have length n_layers - 1"
-
-        self._x_placeholder, self._y_placeholder = self.build_placeholders(self._input_dim)
+        self._in_graph = in_graph
 
         self._layer_compute_ops = {
             "input": self._input_layer,
-            "output": self._output_layer,
             "dense": self._dense_layer,
             "conv": self._convolution_layer
         }
@@ -51,13 +32,34 @@ class LayerCompute(tfUtilities):
         self._layer_weights = []
 
         self._previous_dim = None
+        self._x_placeholder = None
+        self._y_placeholder = None
         self._i = 0
 
     def _input_layer(self):
 
-        assert self._i == 0, "Input layer specified incorrectly. Exiting."
+        input_dim = self._layer_configs[0]["dim"]
 
-        self._previous_dim = self._input_dim
+        self._x_placeholder, self._y_placeholder = self.build_placeholders(input_dim)
+
+        # if we already have a graph, replace the x placeholder with it
+        if self._in_graph:
+
+            self._x_placeholder = self._in_graph
+
+            if self._in_weights is not None:
+                assert len(self._layer_configs) == len(self._in_weights), \
+                    "If an input graph is specified and weights are provided, the number " \
+                    "of layers and input weights should match in length."
+
+        else:
+            if self._in_weights is not None:
+                assert len(self._layer_configs) == len(self._in_weights), \
+                    "If weights are provided, the number of weight sets should be (#layers - 1)"
+
+                self._layer_configs = self._layer_configs[1:]
+
+        self._previous_dim = input_dim
         self._i += 1
 
         return self._x_placeholder
@@ -91,7 +93,7 @@ class LayerCompute(tfUtilities):
 
             linear_op = tf.matmul(in_graph, weights) + biases
 
-            if _act != "none":
+            if _act not in ["none", "linear"]:
                 out_op = self.activate(linear_op, _act)
             else:
                 out_op = linear_op
@@ -149,19 +151,6 @@ class LayerCompute(tfUtilities):
                                     padding='SAME')
         return out_op
 
-    def _output_layer(self, in_graph, layer_config, in_w=None):
-        """
-
-        :param in_graph:
-        :param layer_config:
-        :param in_w:
-        :return:
-        """
-
-        assert layer_config["activation"] == "none"
-
-        return self._dense_layer(in_graph, layer_config, in_w)
-
     def _layer_compute(self, in_graph, layer_config, in_w=None):
         """
 
@@ -197,7 +186,7 @@ class LayerCompute(tfUtilities):
         return _out_graph
 
 
-class NN(LayerCompute):
+class NN(FeedForward):
 
     def __init__(self, model_ops, in_weights=None, wait=False):
         """
