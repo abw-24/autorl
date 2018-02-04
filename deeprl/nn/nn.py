@@ -115,6 +115,8 @@ class FeedForward(tfUtilities):
         # TODO: previous dim handling for conv layer
 
         strides = layer_config['strides']
+        pixel_dims = layer_config['input_dims']
+        reshape_dim = [-1] + pixel_dims + [1]
 
         with tf.name_scope("conv_" + str(self._i) + "_"):
 
@@ -125,7 +127,8 @@ class FeedForward(tfUtilities):
                 weights = tf.Variable(in_w["weights"].astype(np.float32), name='weights')
                 biases = tf.Variable(in_w["biases"].astype(np.float32), name='biases')
 
-            conv_op = tf.nn.conv2d(in_graph, weights, strides=[1, strides, strides, 1], padding='SAME')
+            x = tf.reshape(in_graph, shape=reshape_dim)
+            conv_op = tf.nn.conv2d(x, weights, strides=[1, strides, strides, 1], padding='SAME')
             bias_conv_op = tf.nn.bias_add(conv_op, biases)
             nonlinear_op = tf.nn.relu(bias_conv_op)
 
