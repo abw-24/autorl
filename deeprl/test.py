@@ -1,7 +1,6 @@
 
 """
 -- Test architectures on the cartpole problem
---
 """
 
 import gym
