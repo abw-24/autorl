@@ -62,7 +62,10 @@ class tfUtilities(object):
         loss_functions = {'cross_entropy': tf.nn.softmax_cross_entropy_with_logits,
                           'squared_loss': square_loss}
 
-        return loss_functions[loss_type](output, labels)
+        if loss_type == 'cross_entropy':
+            return loss_functions[loss_type](labels=labels, logits=output)
+        else:
+            return loss_functions[loss_type](labels, output)
 
     @staticmethod
     def optimize(loss, optimizer_type, learning_rate, momentum=0.2):
