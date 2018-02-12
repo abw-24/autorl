@@ -25,6 +25,7 @@ class FeedForward(tfUtilities):
 
         self._layer_compute_ops = {
             "input": self._input_layer,
+            "output": self._dense_layer,
             "dense": self._dense_layer,
             "conv": self._convolution_layer
         }
@@ -54,10 +55,10 @@ class FeedForward(tfUtilities):
 
         else:
             if self._in_weights is not None:
-                assert len(self._layer_configs) == len(self._in_weights), \
+                assert len(self._layer_configs) == len(self._in_weights) - 1, \
                     "If weights are provided, the number of weight sets should be (#layers - 1)"
 
-                self._layer_configs = self._layer_configs[1:]
+            self._layer_configs = self._layer_configs[1:]
 
         self._previous_dim = input_dim
         self._i += 1
