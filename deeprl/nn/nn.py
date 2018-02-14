@@ -14,6 +14,8 @@ import numpy as np
 
 import math
 
+#TODO: add handling for "depth" in conv layer
+
 
 class FeedForward(tfUtilities):
 
@@ -74,17 +76,17 @@ class FeedForward(tfUtilities):
         :return:
         """
 
-        _col_dim = layer_config["dim"]
-        _act = layer_config["activation"]
+        col_dim = int(layer_config["dim"])
+        g = layer_config["activation"]
 
         with tf.name_scope("dense_" + str(self._i) + "_"):
 
             if in_w is None:
-                # using truncated normals for weight initialization, zeros for biases
-                w_dim = [self._previous_dim, _col_dim]
+                # using truncated normals for weight initialization
+                w_dim = [self._previous_dim, col_dim]
                 sd = 1.0 / math.sqrt(float(self._previous_dim))
-                weights = tf.Variable(tf.truncated_normal(w_dim, stddev=sd, name='weights'))
-                biases = tf.Variable(tf.zeros([_col_dim]), name='biases')
+                weights = tf.Variable(tf.truncated_normal(w_dim, stddev=sd, mean=1.0, name='weights'))
+                biases = tf.Variable(tf.truncated_normal([col_dim], stddev=sd, mean=1.0, name='biases'))
 
             else:
                 weights = tf.Variable(in_w["weights"].astype(np.float32), name='weights')
@@ -94,14 +96,29 @@ class FeedForward(tfUtilities):
 
             linear_op = tf.matmul(in_graph, weights) + biases
 
-            if _act not in ["none", "linear"]:
-                out_op = self.activate(linear_op, _act)
-            else:
+            if g in ["none", "linear"]:
                 out_op = linear_op
+            else:
+                out_op = self.activate(linear_op, g)
 
         self._i += 1
-        self._previous_dim = _col_dim
+        self._previous_dim = col_dim
 
+        return out_op
+
+    @staticmethod
+    def _pooling_layer(in_graph, strides, padding="SAME"):
+        """
+
+        :param in_graph:
+        :param layer_config:
+        :param in_w:
+        :return:
+        """
+
+        out_op = tf.nn.max_pool(in_graph,
+                                ksize=[1, strides, strides, 1], strides=[1, strides, strides, 1],
+                                padding=padding)
         return out_op
 
     def _convolution_layer(self, in_graph, layer_config, in_w=None):
@@ -113,46 +130,49 @@ class FeedForward(tfUtilities):
         :return:
         """
 
-        # TODO: previous dim handling for conv layer
+        strides = int(layer_config['strides'])
+        pixel_dims = layer_config['pixel_dim']
+        channels = int(layer_config['channels'])
+        out_channels = int(layer_config['out_dim'])
+        p_bool = layer_config['pooling'].lower() in ["t", "true"]
+        p_dim = layer_config['pool_dim']
 
-        strides = layer_config['strides']
-        pixel_dims = layer_config['input_dims']
-        reshape_dim = [-1] + pixel_dims + [1]
+        try:
+            padding = layer_config['padding']
+        except KeyError:
+            padding = "SAME"
+
+        assert isinstance(pixel_dims, (list, tuple)), "Expecting conv layer dimensions to be a list."
+        assert len(pixel_dims) == 2, "Only 2-d convolutions currently supported."
+
+        reshape_dim = [-1] + pixel_dims + [channels]
 
         with tf.name_scope("conv_" + str(self._i) + "_"):
 
             if in_w is None:
-                weights = tf.Variable(tf.random_normal([strides, strides, 1, 32]), name="weights")
-                biases = tf.Variable(tf.random_normal([32]), name="biases")
+                weights = tf.Variable(tf.truncated_normal([strides, strides, channels, out_channels]), name="weights")
+                biases = tf.Variable(tf.truncated_normal([out_channels]), name="biases")
             else:
                 weights = tf.Variable(in_w["weights"].astype(np.float32), name='weights')
                 biases = tf.Variable(in_w["biases"].astype(np.float32), name='biases')
 
+            self._layer_weights.append({"weights": weights, "biases": biases})
+
             x = tf.reshape(in_graph, shape=reshape_dim)
-            conv_op = tf.nn.conv2d(x, weights, strides=[1, strides, strides, 1], padding='SAME')
+            conv_op = tf.nn.conv2d(x, weights, strides=[1, 1, 1, 1], padding='SAME')
             bias_conv_op = tf.nn.bias_add(conv_op, biases)
             nonlinear_op = tf.nn.relu(bias_conv_op)
 
-        self._layer_weights.append({"weights": weights, "biases": biases})
+            if p_bool:
+                assert isinstance(p_dim, (list, tuple)), "Expecting pooling dimensions to be a list."
+                self._previous_dim = None
+                out_op =  self._pooling_layer(nonlinear_op, p_dim, padding)
+            else:
+                self._previous_dim = out_channels
+                out_op = nonlinear_op
+
         self._i += 1
 
-        return nonlinear_op
-
-    def _pooling_layer(self, in_graph, layer_config, in_w=None):
-        """
-
-        :param in_graph:
-        :param layer_config:
-        :param in_w:
-        :return:
-        """
-
-        strides = layer_config['strides']
-
-        with tf.name_scope("pool_" + str(self._i) + "_"):
-            out_op = tf.nn.max_pool(in_graph,
-                                    ksize=[1, strides, strides, 1], strides=[1, strides, strides, 1],
-                                    padding='SAME')
         return out_op
 
     def _layer_compute(self, in_graph, layer_config, in_w=None):
