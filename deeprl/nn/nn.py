@@ -107,7 +107,7 @@ class FeedForward(tfUtilities):
         return out_op
 
     @staticmethod
-    def _pooling_layer(in_graph, strides, padding="SAME"):
+    def _pooling_op(in_graph, strides, padding="SAME"):
         """
 
         :param in_graph:
@@ -121,6 +121,15 @@ class FeedForward(tfUtilities):
                                 padding=padding)
         return out_op
 
+    @staticmethod
+    def _conv_op(in_graph, weights, biases):
+
+        conv_op = tf.nn.conv2d(in_graph, weights, strides=[1, 1, 1, 1], padding='SAME')
+        bias_conv_op = tf.nn.bias_add(conv_op, biases)
+        nonlinear_op = tf.nn.relu(bias_conv_op)
+
+        return nonlinear_op
+
     def _convolution_layer(self, in_graph, layer_config, in_w=None):
         """
 
@@ -130,50 +139,54 @@ class FeedForward(tfUtilities):
         :return:
         """
 
-        strides = int(layer_config['strides'])
+        # parse convolution layer options
+        strides = layer_config['strides']
         pixel_dims = layer_config['pixel_dim']
-        channels = int(layer_config['channels'])
-        out_channels = int(layer_config['out_dim'])
+        channels = layer_config['channels']
         p_bool = layer_config['pooling'].lower() in ["t", "true"]
         p_dim = layer_config['pool_dim']
+        depth = int(layer_config["stack_depth"])
 
         try:
             padding = layer_config['padding']
         except KeyError:
             padding = "SAME"
 
-        assert isinstance(pixel_dims, (list, tuple)), "Expecting conv layer dimensions to be a list."
-        assert len(pixel_dims) == 2, "Only 2-d convolutions currently supported."
-
+        # set input reshape dim, check values for specification consistency, take
+        # care of some handling for specifying stacked convolutions
         reshape_dim = [-1] + pixel_dims + [channels]
+        assert len(channels) + 1 == depth, "Channels should be a list of lenth (depth + 1)"
+        current_image_dim = pixel_dims
+        current_out_dim = channels[1]
 
-        with tf.name_scope("conv_" + str(self._i) + "_"):
+        if isinstance(strides, ('string', 'int')):
+            strides = [strides]*depth
 
-            if in_w is None:
-                weights = tf.Variable(tf.truncated_normal([strides, strides, channels, out_channels]), name="weights")
-                biases = tf.Variable(tf.truncated_normal([out_channels]), name="biases")
-            else:
-                weights = tf.Variable(in_w["weights"].astype(np.float32), name='weights')
-                biases = tf.Variable(in_w["biases"].astype(np.float32), name='biases')
+        if not isinstance(p_dim[0], (list, tuple)):
+            p_dim = [p_dim]*depth
 
-            self._layer_weights.append({"weights": weights, "biases": biases})
+        for i, e in enumerate(zip(strides, p_dim)):
 
-            x = tf.reshape(in_graph, shape=reshape_dim)
-            conv_op = tf.nn.conv2d(x, weights, strides=[1, 1, 1, 1], padding='SAME')
-            bias_conv_op = tf.nn.bias_add(conv_op, biases)
-            nonlinear_op = tf.nn.relu(bias_conv_op)
+            with tf.name_scope("conv_" + str(self._i) + "_"):
 
-            if p_bool:
-                assert isinstance(p_dim, (list, tuple)), "Expecting pooling dimensions to be a list."
-                self._previous_dim = None
-                out_op =  self._pooling_layer(nonlinear_op, p_dim, padding)
-            else:
-                self._previous_dim = out_channels
-                out_op = nonlinear_op
+                if in_w is None:
+                    weights = tf.Variable(tf.truncated_normal([strides, strides, channels[i], channels[i+1]]), name="weights")
+                    biases = tf.Variable(tf.truncated_normal([channels[i+1]]), name="biases")
+                else:
+                    weights = tf.Variable(in_w["weights"].astype(np.float32), name='weights')
+                    biases = tf.Variable(in_w["biases"].astype(np.float32), name='biases')
 
-        self._i += 1
+                self._layer_weights.append({"weights": weights, "biases": biases})
 
-        return out_op
+                x = tf.reshape(in_graph, shape=reshape_dim)
+                nonlinear_op = self._conv_op(x, weights, biases)
+
+                if p_bool:
+                    nonlinear_op =  self._pooling_op(nonlinear_op, p_dim, padding)
+
+            self._i += 1
+
+        return nonlinear_op
 
     def _layer_compute(self, in_graph, layer_config, in_w=None):
         """
