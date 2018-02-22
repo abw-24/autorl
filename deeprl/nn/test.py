@@ -56,7 +56,7 @@ class NNTest(object):
         final_loss = None
         for i in range(1000):
             batch = mnist_data.train.next_batch(100)
-            _, loss_val = training_step.run(
+            _, loss_val = sess.run(
                     [training_step, graph_.loss],feed_dict={
                         graph_._x_placeholder: batch[0],
                         graph_._y_placeholder: batch[1]
@@ -127,14 +127,14 @@ conv_config = {
             "type": "conv",
             "pixel_dim": [28,28],
             "strides": 5,
-            "channels": 1,
+            "channels": [1, 32, 64],
             "stack_depth": 2,
-            "out_dim": 32,
             "pooling": "true",
-            "pool_dim": [2,2]
+            "pool_dim": [[2,2], [2,2]]
         },
         {
             "type": "dense",
+            "activation": "relu",
             "dim": 1024
         },
         {
@@ -149,7 +149,7 @@ conv_config = {
 }
 
 conv_net = NNTest(conv_config)
-loss_ = conv_net
+loss_ = conv_net.run()
 
 if loss_ is not None:
     l.info("CONV - PASS")

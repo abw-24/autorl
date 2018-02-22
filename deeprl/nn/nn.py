@@ -117,7 +117,7 @@ class FeedForward(tfUtilities):
         """
 
         out_op = tf.nn.max_pool(in_graph,
-                                ksize=[1, strides, strides, 1], strides=[1, strides, strides, 1],
+                                ksize=[1, strides[0], strides[1], 1], strides=[1, strides[0], strides[1], 1],
                                 padding=padding)
         return out_op
 
@@ -154,39 +154,50 @@ class FeedForward(tfUtilities):
 
         # set input reshape dim, check values for specification consistency, take
         # care of some handling for specifying stacked convolutions
-        reshape_dim = [-1] + pixel_dims + [channels]
-        assert len(channels) + 1 == depth, "Channels should be a list of lenth (depth + 1)"
+        reshape_dim = [-1] + pixel_dims + [channels[0]]
+        assert len(channels) == depth + 1, "Channels should be a list of lenth (depth + 1)"
         current_image_dim = pixel_dims
-        current_out_dim = channels[1]
 
-        if isinstance(strides, ('string', 'int')):
+        if isinstance(strides, (str, int)):
             strides = [strides]*depth
 
         if not isinstance(p_dim[0], (list, tuple)):
             p_dim = [p_dim]*depth
 
-        for i, e in enumerate(zip(strides, p_dim)):
+        weight_set = []
 
-            with tf.name_scope("conv_" + str(self._i) + "_"):
+        with tf.name_scope("stacked_conv_" + str(self._i) + "_"):
+
+            stacked_op = tf.reshape(in_graph, shape=reshape_dim)
+
+            for i, e in enumerate(zip(strides, p_dim)):
+
+                s, p = e
 
                 if in_w is None:
-                    weights = tf.Variable(tf.truncated_normal([strides, strides, channels[i], channels[i+1]]), name="weights")
+                    weights = tf.Variable(tf.truncated_normal([s, s, channels[i], channels[i+1]]), name="weights")
                     biases = tf.Variable(tf.truncated_normal([channels[i+1]]), name="biases")
                 else:
-                    weights = tf.Variable(in_w["weights"].astype(np.float32), name='weights')
-                    biases = tf.Variable(in_w["biases"].astype(np.float32), name='biases')
+                    weights = tf.Variable(in_w[i]["weights"].astype(np.float32), name='weights')
+                    biases = tf.Variable(in_w[i]["biases"].astype(np.float32), name='biases')
 
-                self._layer_weights.append({"weights": weights, "biases": biases})
+                weight_set.append({"weights": weights, "biases": biases})
 
-                x = tf.reshape(in_graph, shape=reshape_dim)
-                nonlinear_op = self._conv_op(x, weights, biases)
+                stacked_op = self._conv_op(stacked_op, weights, biases)
 
                 if p_bool:
-                    nonlinear_op =  self._pooling_op(nonlinear_op, p_dim, padding)
+                    stacked_op =  self._pooling_op(stacked_op, p, padding)
+                    current_image_dim = [current_image_dim[0]/p[0], current_image_dim[1]/p[1]]
 
-            self._i += 1
+            out_dim = int(current_image_dim[0]*current_image_dim[1]*channels[-1])
+            flattened_op = tf.reshape(stacked_op, [-1, out_dim])
 
-        return nonlinear_op
+            self._previous_dim = out_dim
+            self._layer_weights.append(weight_set)
+
+        self._i += 1
+
+        return flattened_op
 
     def _layer_compute(self, in_graph, layer_config, in_w=None):
         """
