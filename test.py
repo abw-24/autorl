@@ -8,24 +8,22 @@ import gym
 N_EPISODES = 5
 N_STEPS = 1000
 
-# supported_architectures = ("a2c", "dqn", "random")
-
 ###################
 # launch cartpole #
 ###################
 
 env = gym.make('CartPole-v0')
 
-for e in xrange(N_EPISODES):
+for e in range(N_EPISODES):
 
     env.reset()
 
-    for _ in xrange(N_STEPS):
+    for _ in range(N_STEPS):
         env.render()
         action = env.action_space.sample()
         observation, reward, done, info = env.step(action)
         if done:
-            print "Episode {} finished after {} timesteps".format(e, _+1)
+            print("Episode {} finished after {} timesteps".format(e, _+1))
             break
 
-    print "Episode {} reached the max allowed steps".format(e)
+    print("Episode {} reached the max allowed steps".format(e))
