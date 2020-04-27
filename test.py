@@ -25,5 +25,5 @@ for e in range(N_EPISODES):
         if done:
             print("Episode {} finished after {} timesteps".format(e, _+1))
             break
-
-    print("Episode {} reached the max allowed steps".format(e))
+    else:
+        print("Episode {} reached the max allowed steps".format(e))
