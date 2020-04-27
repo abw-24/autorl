@@ -1,2 +1,2 @@
-# DEEP RL
-Generalized RL agents (TensorFlow) for use with Gym.
+# Auto RL
+Generalized RL agents for use with Gym, TenorFlow 2.0.
