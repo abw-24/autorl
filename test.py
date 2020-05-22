@@ -4,26 +4,18 @@
 """
 
 import gym
+from autorl import agents
 
-N_EPISODES = 5
-N_STEPS = 1000
-
-###################
-# launch cartpole #
-###################
+N_EPISODES = 500
+DISCOUNT = 0.9
 
 env = gym.make('CartPole-v0')
 
-for e in range(N_EPISODES):
+################
+# value agents #
+################
 
-    env.reset()
+mc = agents.DeepMC(env=env, discount=DISCOUNT)
 
-    for _ in range(N_STEPS):
-        env.render()
-        action = env.action_space.sample()
-        observation, reward, done, info = env.step(action)
-        if done:
-            print("Episode {} finished after {} timesteps".format(e, _+1))
-            break
-    else:
-        print("Episode {} reached the max allowed steps".format(e))
+mc.train(N_EPISODES, epsilon=0.1, epsilon_schedule=True, schedule_freq=10)
+mc.play(100)
