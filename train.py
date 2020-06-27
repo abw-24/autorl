@@ -5,11 +5,10 @@
 
 config_ = {
   "env": "CartPole-v0",
-  "network": None,
   "train_episodes": 500,
   "play_episodes": 10,
   "discount": 0.99,
-  "kwargs": {
+  "train_kwargs": {
     "epsilon": 0.01,
     "epsilon_schedule": 10
   }
@@ -49,8 +48,7 @@ if __name__ == "__main__":
 
     # instantiate and configure agent, train, and play
     agent = getattr(agents, agent_tag)(env, config_["discount"])
-    agent.configure(config_["network"])
-    agent.train(config_["train_episodes"], **config_["kwargs"])
+    agent.train(config_["train_episodes"], **config_["train_kwargs"])
     agent.play(config_["play_episodes"])
 
     print("Finished.")

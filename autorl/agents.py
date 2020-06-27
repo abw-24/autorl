@@ -61,15 +61,15 @@ class GymAgent(object):
     def greedy_policy(self, state):
         pass
 
-    def _buffer_add(self, triplet):
+    def _buffer_add(self, element):
         if self._buffer_size is None:
             print("Replay buffer size not specified. Defaulting to 1000.")
             self._buffer_size = 1000
 
         if len(self._replay_buffer) < self._buffer_size:
-            self._replay_buffer.append(triplet)
+            self._replay_buffer.append(element)
         else:
-            self._replay_buffer[np.random.randint(0, self._buffer_size)] = triplet
+            self._replay_buffer[np.random.randint(0, self._buffer_size)] = element
 
     def _buffer_batch(self, batch_size):
         # if we don't have enough to fill a batch, just return what we've got
@@ -163,15 +163,20 @@ class ValueAgent(GymAgent):
             raise ValueError("Unrecognized state type.")
 
         # compiled model
-        self._q_network = train.model_init(network, config_, batch_shape)
+        return train.model_init(network, config_, batch_shape)
 
-    def q_eval(self, state, frozen=False, reshape=None):
+    def _set_frozen_weights(self):
+        self._frozen_q_network.set_weights(
+                [w.numpy() for w in self._q_network.weights]
+        )
+
+    def q_eval(self, state, freeze_flag=False, reshape=None):
         """
         Evaluate the q network (or frozen q network) at the current state array
         :param state:
         :return:
         """
-        if frozen:
+        if freeze_flag:
             assert self._frozen_q_network is not None, \
                 "Asked for the frozen q network evaluation, but no frozen q network available."
             preds = self._frozen_q_network.predict(state)
@@ -213,7 +218,6 @@ class DeepMC(ValueAgent):
     def __init__(self, env, discount=0.99):
 
         super(DeepMC, self).__init__(env, discount)
-        self._q_network = None
 
     def _return(self, rewards):
         """
@@ -245,7 +249,7 @@ class DeepMC(ValueAgent):
 
         return state_array, target_array
 
-    def train(self, n_episodes, max_steps=1000, epsilon=0.01, epsilon_schedule=False):
+    def train(self, n_episodes, max_steps=1000, epsilon=0.01, epsilon_schedule=False, network=None):
         """
         For each episode, play with the epsilon-greedy policy and record
         the states, actions, and rewards. once the episode is up, use the
@@ -259,7 +263,7 @@ class DeepMC(ValueAgent):
         """
 
         if self._q_network is None:
-            self.configure()
+            self._q_network = self.configure(network)
 
         max_reward = 0.0
 
@@ -306,6 +310,7 @@ class DeepQ(ValueAgent):
     """
 
     def __init__(self, env, discount=0.99):
+
         super(DeepQ, self).__init__(env, discount)
 
     def _batch(self, data, q_freeze):
@@ -325,28 +330,29 @@ class DeepQ(ValueAgent):
         # state over the entire batch simultaneously
         state_array = np.array(states).reshape(state_shape)
         state_prime_array = np.array(states_prime).reshape(state_shape)
-        target_array = self.q_eval(state_array, frozen=q_freeze is not None,
+        target_array = self.q_eval(state_array, freeze_flag=q_freeze is not None,
                                    reshape=action_shape)
-        target_prime_array = self.q_eval(state_prime_array, frozen=q_freeze is not None,
+        target_prime_array = self.q_eval(state_prime_array, freeze_flag=q_freeze is not None,
                                          reshape=action_shape)
 
         # iterate and update target array with rewards plus
         # the discounted max over the next state's q values
         for i in range(target_prime_array.shape[0]):
-            # place the rewards in the index associated with the current tuples' action
+            # place the rewards in the index associated with the action taken.
+            # the rest of the targets are the existing q values (so they aren't involved
+            # when taking the gradient wrt the loss and only the action taken gets updated)
             target_array[i, actions[i]] = rewards[i] + self._discount*np.max(target_prime_array[i,:])
 
         return state_array, target_array
 
     def train(self, n_episodes, max_steps=1000, epsilon=0.01, epsilon_schedule=10, buffer_size=128,
-              batch_size=16, q_freeze=None):
+              batch_size=16, weight_freeze=None, network=None):
         """
         For each episode, play with the epsilon-greedy policy and record
         the states, actions, and rewards. At each step, use the action value
-        function, the observed tuple, and a set of random tuples from the
-        replay buffer (experience replay) to bootstrap the q-learning targets
-        and update the q network. Target network can be optionally frozen for
-        a specified number of steps.
+        function and a set of random tuples from the replay buffer to bootstrap
+        the q-learning targets and update the q network. Target network can
+        be optionally frozen for a specified number of steps.
 
         :param n_episodes:
         :param max_steps:
@@ -354,27 +360,29 @@ class DeepQ(ValueAgent):
         :param epsilon_schedule:
         :param buffer_size:
         :param batch_size:
-        :param q_freeze:
+        :param weight_freeze:
+        :param network:
         :return:
         """
         if self._q_network is None:
-            self.configure()
+            self._q_network = self.configure(network)
 
         self._buffer_size = buffer_size
 
-        if q_freeze is not None:
-            self._frozen_q_network = self._q_network
-            self._frozen_q_network.set_weights(self._q_network.weights)
+        if weight_freeze is not None:
+            self._frozen_q_network = self.configure(network)
+            self._set_frozen_weights()
 
         max_reward = 0.0
         total_steps = 0
+        freeze_step = 0
         loss = 0.0
 
         for i in range(n_episodes):
 
             if epsilon_schedule is not None:
                 if i % epsilon_schedule == 0:
-                    epsilon = epsilon*0.99
+                    epsilon = epsilon*0.999
 
             obs = self.reset()
             obs = obs.reshape([1] + self._state_dim)
@@ -393,17 +401,12 @@ class DeepQ(ValueAgent):
                 # and sample to generate a batch for building targets and training
                 self._buffer_add((obs, action, reward, new_obs))
                 tuple_batch = self._buffer_batch(batch_size)
-                batch_x, batch_y = self._batch(tuple_batch, q_freeze)
+                batch_x, batch_y = self._batch(tuple_batch, weight_freeze)
 
                 # train
                 loss, grads = train.grad(self._q_network, batch_x, batch_y)
                 updates = zip(grads, self._q_network.trainable_variables)
                 self._q_network.optimizer.apply_gradients(updates)
-
-                # if we're using frozen weights, check if its time to update
-                if q_freeze is not None:
-                    if total_steps % q_freeze == 0:
-                        self._frozen_q_network.set_weights(self._q_network.weights)
 
                 if done:
                     max_reward = max(max_reward, ep_reward)
@@ -414,3 +417,13 @@ class DeepQ(ValueAgent):
 
             print("Finished game {}...".format(i+1))
             print("Current loss: {}".format(loss))
+
+            # if we're using frozen weights, check if its time to update
+            # by dividing the total steps by the weight freeze param
+            # and taking the floor. if the integer result is greater
+            # than the current freeze_step integer value, then it's time
+            if weight_freeze is not None:
+                current_freeze_step = int(total_steps / weight_freeze)
+                if current_freeze_step > freeze_step:
+                    self._set_frozen_weights()
+                    freeze_step = current_freeze_step
