@@ -1,14 +1,14 @@
 {
   "env": "CartPole-v0",
-  "network": {"loss": {"MeanSquaredError": {}}, "dense_dims": [32, 8], "output_activation": "linear"},
-  "train_episodes": 500,
+  "train_episodes": 5000,
   "play_episodes": 50,
   "discount": 0.99,
-  "kwargs": {
-    "epsilon": 0.90,
+  "train_kwargs": {
+    "epsilon": 0.99,
     "epsilon_schedule": 2,
-    "buffer_size": 128,
-    "batch_size": 16,
-    "q_freeze": null
+    "buffer_size": 256,
+    "batch_size": 32,
+    "network": {"loss": {"MeanSquaredError": {}}, "dense_dims": [32, 16], "output_activation": "linear"},
+    "weight_freeze": 100
   }
 }
