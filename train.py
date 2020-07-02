@@ -29,8 +29,6 @@ if __name__ == "__main__":
                         help='Flag for q-learning.')
     parser.add_argument('--mc-learner', dest='agent', default=None, action='store_const', const="DeepMC",
                         help='Flag for mc-learning.')
-    parser.add_argument('--sarsa-learner', dest='agent', default=None, action='store_const', const="DeepSARSA",
-                        help='Flag for sarsa-learning.')
     parser.add_argument('--config', dest='config', action='store', default=None,
                         help='Location of the configuration file.')
 
