@@ -1,2 +1,2 @@
 # Auto RL
-Generalized RL agents for use with Gym, TenorFlow 2.0.
+Generalized RL agents for use with Gym, TensorFlow 2.0.
