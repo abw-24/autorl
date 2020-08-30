@@ -1,7 +1,7 @@
 import random
 
 import numpy as np
-from nets import nets, train
+from nets import dense, train
 
 from autorl.base import GymAgent
 
@@ -44,7 +44,7 @@ class ValueAgent(GymAgent):
             if config is not None:
                 config_.update(config)
 
-            network = nets.MLP(config_)
+            network = dense.MLP(config_)
 
         elif "tensor" in self._state_type:
             raise NotImplementedError("Only supporting MLPs right now.")
@@ -317,14 +317,3 @@ class DeepQ(ValueAgent):
                 if current_step > freeze_step:
                     self._set_frozen_weights()
                     freeze_step = current_step
-
-
-##################
-# POLICY METHODS #
-##################
-
-
-
-########################
-# ACTOR-CRITIC METHODS #
-########################
