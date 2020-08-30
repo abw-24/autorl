@@ -25,10 +25,10 @@ if __name__ == "__main__":
     import autorl.agents as agents
 
     parser = ap.ArgumentParser(description='Deep RL!')
-    parser.add_argument('--q-learner', dest='agent', default=None, action='store_const', const="DeepQ",
-                        help='Flag for q-learning.')
-    parser.add_argument('--mc-learner', dest='agent', default=None, action='store_const', const="DeepMC",
-                        help='Flag for mc-learning.')
+    parser.add_argument('--q-learner', dest='agent', default=None, action='store_const',
+                        const="DeepQ", help='Flag for q-learning.')
+    parser.add_argument('--mc-learner', dest='agent', default=None, action='store_const',
+                        const="DeepMC", help='Flag for mc-learning.')
     parser.add_argument('--config', dest='config', action='store', default=None,
                         help='Location of the configuration file.')
 

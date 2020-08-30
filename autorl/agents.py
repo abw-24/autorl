@@ -1,7 +1,7 @@
 import random
 
 import numpy as np
-from nets import nets, train
+from nets import dense, train
 
 from autorl.base import GymAgent
 
@@ -44,7 +44,7 @@ class ValueAgent(GymAgent):
             if config is not None:
                 config_.update(config)
 
-            network = nets.MLP(config_)
+            network = dense.MLP(config_)
 
         elif "tensor" in self._state_type:
             raise NotImplementedError("Only supporting MLPs right now.")
@@ -53,7 +53,7 @@ class ValueAgent(GymAgent):
             raise ValueError("Unrecognized state type.")
 
         # compiled model
-        return train.model_init(network, config_, batch_shape)
+        return train.model_init(network, config_["loss"], config_["optimizer"], batch_shape)
 
     def _set_frozen_weights(self):
         self._frozen_q_network.set_weights(
@@ -133,6 +133,7 @@ class DeepMC(ValueAgent):
         target_array = np.zeros((len(data), self._action_dim))
 
         # iterate over states and construct mc-target
+        #TODO: refactor to compute targets over whole state trajectory simultaneously
         for i, s in enumerate(states):
             target_vector = self.q_eval(s, reshape=self._action_dim)
             target_vector[actions[i]] = self._return(rewards[i:])

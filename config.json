@@ -6,8 +6,8 @@
   "train_kwargs": {
     "epsilon": 0.99,
     "epsilon_schedule": 5,
-    "buffer_size": 256,
-    "batch_size": 32,
+    "buffer_size": 1024,
+    "batch_size": 16,
     "network": {"loss": {"MeanAbsoluteError": {}}, "dense_dims": [24, 16], "output_activation": "linear"},
     "weight_freeze": 2000
   }
