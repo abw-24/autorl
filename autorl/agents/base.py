@@ -2,11 +2,12 @@
 from gym import spaces
 import random
 import numpy as np
+from abc import ABCMeta, abstractmethod
 
 
-class GymAgent(object):
+class GymAgent(object, metaclass=ABCMeta):
 
-    def __init__(self, env, discount=0.99):
+    def __init__(self, env, discount=0.99, config=None):
         """
         Base RL agent for Gym RL environments. Does some initial introspection
         to set the state and action space info needed for model configuration,
@@ -21,6 +22,7 @@ class GymAgent(object):
         self._action_space = env.action_space
         self._replay_buffer = []
         self._buffer_size = None
+        self._config = config
 
         # check the environment, set shapes and types
         assert isinstance(self._state_space, spaces.Box), \
@@ -54,11 +56,13 @@ class GymAgent(object):
         # convenience accessor for env.step
         return self._env.step(action)
 
-    def configure(self):
-        pass
+    @abstractmethod
+    def _configure(self, config=None):
+        NotImplementedError("Abstract.")
 
+    @abstractmethod
     def greedy_policy(self, state):
-        pass
+        NotImplementedError("Abstract.")
 
     def _buffer_add(self, element):
         if self._buffer_size is None:

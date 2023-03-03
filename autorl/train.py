@@ -22,7 +22,7 @@ if __name__ == "__main__":
     import argparse as ap
     import json
     import gym
-    import autorl.agents as agents
+    import autorl.agents.value as agents
 
     parser = ap.ArgumentParser(description='Deep RL!')
     parser.add_argument('--q-learner', dest='agent', default=None, action='store_const',
