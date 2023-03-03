@@ -1,7 +1,9 @@
 import random
 
 import numpy as np
+import tensorflow as tf
 from nets.models.factory import MLPFactory
+from nets.utils import get_obj
 
 from autorl.agents.base import GymAgent
 
@@ -12,14 +14,24 @@ class ValueAgent(GymAgent):
     no explicit policy representation).
     """
 
-    def __init__(self, env, discount=0.99):
-        super(ValueAgent, self).__init__(env, discount)
-        self._q_network = None
+    def __init__(self, env, discount=0.99, config=None):
+        super().__init__(env, discount, config)
+
+        self._q_network = self._configure(self._config)
         self._frozen_q_network = None
 
-    def configure(self, config=None):
+    def _set_frozen_weights(self):
         """
-        Configure and compile the action value network. For now, just an MLP.
+        Transfer current q network weights to frozen network.
+        :return: NoReturnValue
+        """
+        self._frozen_q_network.set_weights(
+                [w.numpy() for w in self._q_network.weights]
+        )
+
+    def _configure(self, config=None):
+        """
+        Configure and compile the action value network.
         :return: Compiled TF Keras model
         """
 
@@ -27,9 +39,8 @@ class ValueAgent(GymAgent):
 
         if self._state_type == "vector":
             greater_than = lambda x, y: [x, y] if x >= y else [y, x]
-            bigger, smaller = greater_than(self._action_dim*2, int(self._state_dim[0]/2))
             default_config = {
-                        "hidden_dims": [bigger, smaller],
+                        "hidden_dims": greater_than(self._action_dim*2, int(self._state_dim[0]/2)),
                         "activation": "relu",
                         "output_dim": self._action_dim,
                         "optimizer": {"Adam": {"learning_rate": 0.001}},
@@ -43,8 +54,8 @@ class ValueAgent(GymAgent):
             network = MLPFactory.apply(default_config)
             network.build(input_shape)
             network.compile(
-                    loss=default_config.get("loss"),
-                    optimizer=default_config.get("optimizer")
+                    loss=get_obj(tf.keras.losses, default_config.get("loss")),
+                    optimizer=get_obj(tf.keras.optimizers, default_config.get("optimizer"))
             )
 
         elif "tensor" in self._state_type:
@@ -54,11 +65,6 @@ class ValueAgent(GymAgent):
             raise ValueError("Unrecognized state type.")
 
         return network
-
-    def _set_frozen_weights(self):
-        self._frozen_q_network.set_weights(
-                [w.numpy() for w in self._q_network.weights]
-        )
 
     def q_eval(self, state, freeze_flag=False, reshape=None):
         """
@@ -104,6 +110,10 @@ class ValueAgent(GymAgent):
             action = self.greedy_policy(state)
 
         return action
+
+    @property
+    def q_network(self):
+        return self._q_network
 
 
 class DeepMC(ValueAgent):
@@ -155,7 +165,7 @@ class DeepMC(ValueAgent):
         """
 
         if self._q_network is None:
-            self.configure()
+            self._q_network = self._configure(self._config)
 
         max_reward = 0.0
 
@@ -166,7 +176,7 @@ class DeepMC(ValueAgent):
                     schedule_step = int(i/epsilon_schedule)
                     epsilon = epsilon*pow(0.9, schedule_step)
 
-            obs = self.reset()
+            obs, _ = self.reset()
             ep_reward = 0.0
             tuple_batch = []
 
@@ -174,7 +184,7 @@ class DeepMC(ValueAgent):
                 self.render()
                 obs = obs.reshape([1] + self._state_dim)
                 action = self.policy(obs, epsilon=epsilon)
-                new_obs, reward, done, info = self.observe(action)
+                new_obs, reward, done, info, _ = self.observe(action)
                 ep_reward += reward
                 tuple_batch.append((obs, action, reward))
                 if done:
@@ -192,7 +202,7 @@ class DeepMC(ValueAgent):
             self._q_network.train_on_batch(batch_x, batch_y)
 
             print("Finished game {}...".format(i+1))
-            print("Current metrics: {}".format(self._q_network.get_metric_results()))
+            print("Current metrics: {}".format(self._q_network.get_metrics_result()))
 
 
 class DeepQ(ValueAgent):
@@ -245,7 +255,7 @@ class DeepQ(ValueAgent):
         return state_array, target_array
 
     def train(self, n_episodes, max_steps=1000, epsilon=0.01, epsilon_schedule=10,
-              buffer_size=128, batch_size=16, weight_freeze=False):
+              buffer_size=128, batch_size=16, weight_freeze=None):
         """
         For each episode, play with the epsilon-greedy policy and record
         the states, actions, and rewards. At each step, use the action value
@@ -263,14 +273,13 @@ class DeepQ(ValueAgent):
         :return:
         """
         if self._q_network is None:
-            self.configure()
+            self._q_network = self._configure()
 
         self._buffer_size = buffer_size
+        freeze_flag = weight_freeze is not None
 
-        freeze_flag = False
-        if weight_freeze is not None:
-            freeze_flag = True
-            self._frozen_q_network = self.configure(self._q_network.get_config())
+        if freeze_flag:
+            self._frozen_q_network = self._configure(self._q_network.get_config())
             self._set_frozen_weights()
 
         max_reward = 0.0
@@ -283,7 +292,7 @@ class DeepQ(ValueAgent):
                 if i % epsilon_schedule == 0:
                     epsilon = epsilon*0.999
 
-            obs = self.reset()
+            obs, _ = self.reset()
             obs = obs.reshape([1] + self._state_dim)
             ep_reward = 0.0
 
@@ -292,7 +301,7 @@ class DeepQ(ValueAgent):
 
                 self.render()
                 action = self.policy(obs, epsilon=epsilon)
-                new_obs, reward, done, info = self.observe(action)
+                new_obs, reward, done, info, _ = self.observe(action)
                 new_obs = new_obs.reshape([1] + self._state_dim)
                 ep_reward += reward
 
@@ -313,7 +322,7 @@ class DeepQ(ValueAgent):
                     obs = new_obs
 
             print("Finished game {}...".format(i+1))
-            print("Current metrics: {}".format(self._q_network.get_metric_results()))
+            print("Current metrics: {}".format(self._q_network.get_metrics_result()))
 
             # if we're using frozen weights, check if its time to update
             # by dividing the total steps by the weight freeze param
@@ -324,3 +333,7 @@ class DeepQ(ValueAgent):
                 if current_step > freeze_step:
                     self._set_frozen_weights()
                     freeze_step = current_step
+
+    @property
+    def frozen_q_network(self):
+        return self._frozen_q_network
