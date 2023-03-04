@@ -1,50 +1,65 @@
 import random
 
 import numpy as np
-from nets import dense, train
+import tensorflow as tf
+from nets.models.factory import MLPFactory
+from nets.utils import get_obj
 
-from autorl.base import GymAgent
-
-
-#################
-# VALUE METHODS #
-#################
+from autorl.agents.base import GymAgent
+from abc import ABCMeta
 
 
-class ValueAgent(GymAgent):
+class ValueAgent(GymAgent, metaclass=ABCMeta):
     """
     Base class for action-value-function control algorithms (methods with
     no explicit policy representation).
     """
 
-    def __init__(self, env, discount=0.99):
-        super(ValueAgent, self).__init__(env, discount)
-        self._q_network = None
-        self._frozen_q_network = None
+    def __init__(self, env, discount=0.99, config=None):
+        super().__init__(env, discount, config)
 
-    def configure(self, config=None):
+        self._q_network = self._build(self._config)
+        self._frozen_q_network = None
+        self._freeze_flag = False
+
+    def _set_frozen_weights(self):
         """
-        Configure and compile the action value network. For now, just an
-        MLP, but CNNs will be supported soon.
+        Transfer current q network weights to frozen network.
+        :return: NoReturnValue
+        """
+        self._frozen_q_network.set_weights(
+                [w.numpy() for w in self._q_network.weights]
+        )
+
+    def _build(self, config=None):
+        """
+        Configure and compile the action value network.
         :return: Compiled TF Keras model
         """
 
-        batch_shape = tuple([None] + self._state_dim)
+        input_shape = tuple([None] + self._state_shape)
 
         if self._state_type == "vector":
-            config_ = {
-                        "dense_dims": list(range(self._action_dim+1, self._state_dim[0]+1))[::-1],
-                        "dense_activation": "relu",
-                        "output_dim": self._action_dim,
+            greater_than = lambda x, y: [x, y] if x >= y else [y, x]
+            default_config = {
+                        "hidden_dims": greater_than(self._action_shape * 2,
+                                                    int(self._state_shape[0] / 2)),
+                        "activation": "relu",
+                        "output_dim": self._action_shape,
                         "optimizer": {"Adam": {"learning_rate": 0.001}},
                         "loss": {"MeanSquaredError": {}},
                         "output_activation": "linear"
             }
 
             if config is not None:
-                config_.update(config)
+                default_config.update(config)
 
-            network = dense.MLP(config_)
+            network = MLPFactory.apply(default_config)
+            network.build(input_shape)
+            network.compile(
+                    loss=get_obj(tf.keras.losses, default_config.get("loss")),
+                    optimizer=get_obj(tf.keras.optimizers, default_config.get("optimizer"))
+            )
 
         elif "tensor" in self._state_type:
             raise NotImplementedError("Only supporting MLPs right now.")
@@ -52,15 +67,9 @@ class ValueAgent(GymAgent):
         else:
             raise ValueError("Unrecognized state type.")
 
-        # compiled model
-        return train.model_init(network, config_["loss"], config_["optimizer"], batch_shape)
+        return network
 
-    def _set_frozen_weights(self):
-        self._frozen_q_network.set_weights(
-                [w.numpy() for w in self._q_network.weights]
-        )
-
-    def q_eval(self, state, freeze_flag=False, reshape=None):
+    def q_eval(self, state, reshape=None):
         """
         Evaluate the q network (or frozen q network) at the current state array
         :param state: State array (or array of state arrays)
@@ -68,9 +77,10 @@ class ValueAgent(GymAgent):
         :param reshape: A shape to reshape the output to (if needed)
         :return: Action value predictions
         """
-        if freeze_flag:
+        if self._freeze_flag:
             assert self._frozen_q_network is not None, \
-                "Asked for the frozen q network evaluation, but no frozen q network available."
+                "Asked for the frozen q network evaluation, " \
+                "but no frozen q network available."
             preds = self._frozen_q_network.predict(state)
 
         else:
@@ -87,7 +97,7 @@ class ValueAgent(GymAgent):
         :param state: State
         :return: Action index
         """
-        return np.argmax(self.q_eval(state, reshape=self._action_dim))
+        return np.argmax(self.q_eval(state, reshape=self._action_shape))
 
     def policy(self, state, epsilon):
         """
@@ -98,18 +108,22 @@ class ValueAgent(GymAgent):
         """
 
         if random.random() < epsilon:
-            action = random.randint(0, self._action_dim-1)
+            action = random.randint(0, self._action_shape - 1)
         else:
             action = self.greedy_policy(state)
 
         return action
 
+    @property
+    def q_network(self):
+        return self._q_network
+
 
 class DeepMC(ValueAgent):
 
-    def __init__(self, env, discount=0.99):
+    def __init__(self, env, discount=0.99, config=None):
 
-        super(DeepMC, self).__init__(env, discount)
+        super().__init__(env, discount, config)
 
     def _return(self, rewards):
         """
@@ -129,19 +143,19 @@ class DeepMC(ValueAgent):
         """
 
         states, actions, rewards = zip(*data)
-        state_array = np.array(states).reshape([len(data)] + self._state_dim)
-        target_array = np.zeros((len(data), self._action_dim))
+        state_array = np.array(states).reshape([len(data)] + self._state_shape)
+        target_array = np.zeros((len(data), self._action_shape))
 
         # iterate over states and construct mc-target
         #TODO: refactor to compute targets over whole state trajectory simultaneously
         for i, s in enumerate(states):
-            target_vector = self.q_eval(s, reshape=self._action_dim)
+            target_vector = self.q_eval(s, reshape=self._action_shape)
             target_vector[actions[i]] = self._return(rewards[i:])
             target_array[i,:] = target_vector
 
         return state_array, target_array
 
-    def train(self, n_episodes, max_steps=1000, epsilon=0.01, epsilon_schedule=False, network=None):
+    def train(self, n_episodes, max_steps=1000, epsilon=0.01, epsilon_schedule=None):
         """
         For each episode, play with the epsilon-greedy policy and record
         the states, actions, and rewards. Once the episode is up, use the
@@ -152,47 +166,44 @@ class DeepMC(ValueAgent):
         :param epsilon_schedule:
         :return:
         """
-
-        if self._q_network is None:
-            self._q_network = self.configure(network)
-
-        max_reward = 0.0
+        # Reset train max reward to 0.0
+        self._train_max_reward = 0.0
 
         for i in range(n_episodes):
-
             if epsilon_schedule is not None:
                 if i % epsilon_schedule == 0:
                     schedule_step = int(i/epsilon_schedule)
                     epsilon = epsilon*pow(0.9, schedule_step)
 
-            obs = self.reset()
+            obs, _ = self.reset()
             ep_reward = 0.0
             tuple_batch = []
 
             for j in range(max_steps):
                 self.render()
-                obs = obs.reshape([1] + self._state_dim)
+                obs = obs.reshape([1] + self._state_shape)
                 action = self.policy(obs, epsilon=epsilon)
-                new_obs, reward, done, info = self.observe(action)
+                new_obs, reward, done, info, _ = self.observe(action)
                 ep_reward += reward
                 tuple_batch.append((obs, action, reward))
                 if done:
-                    max_reward = max(max_reward, ep_reward)
-                    print("Current max reward: {}".format(max_reward))
+                    self._train_max_reward = max(self._train_max_reward, ep_reward)
+                    print("Current max reward: {}".format(self._train_max_reward))
                     break
                 else:
                     obs = new_obs
 
-            # after the episode, prep batch for training, take the grads, and apply.
+            # After the episode, prep batch for training, take the grads, and apply.
             # because the state space is continuous, essentially "first-visit" MC
             # is all we can really do without bucketing or adding a vector
-            # similarity calculation to the processing. possible for future versions
+            # similarity calculation to the processing.
             batch_x, batch_y = self._batch(tuple_batch)
-            loss, grads = train.grad(self._q_network, batch_x, batch_y)
-            updates = zip(grads, self._q_network.trainable_variables)
-            self._q_network.optimizer.apply_gradients(updates)
+            self._q_network.train_on_batch(batch_x, batch_y)
 
-            print("Current loss: {}".format(loss))
+            print("Finished game {}...".format(i+1))
+            print("Current metrics: {}".format(
+                    self._q_network.get_metrics_result()
+            ))
 
 
 class DeepQ(ValueAgent):
@@ -200,11 +211,11 @@ class DeepQ(ValueAgent):
     Deep Q-Learning with experience replay and optional weight freezing.
     """
 
-    def __init__(self, env, discount=0.99):
+    def __init__(self, env, discount=0.99, config=None):
 
-        super(DeepQ, self).__init__(env, discount)
+        super(DeepQ, self).__init__(env, discount, config)
 
-    def _batch(self, data, q_freeze):
+    def _batch(self, data):
         """
         Construct a batch for learning using the provided tuples and
         the action value function.
@@ -214,30 +225,30 @@ class DeepQ(ValueAgent):
         """
 
         states, actions, rewards, states_prime = zip(*data)
-        state_shape = [len(data)] + self._state_dim
-        action_shape = [len(data), self._action_dim]
+        state_shape = [len(data)] + self._state_shape
+        action_shape = [len(data), self._action_shape]
 
-        # get the current q values for the current state and next
+        # Get the current q values for the current state and next
         # state over the entire batch simultaneously
         state_array = np.array(states).reshape(state_shape)
         state_prime_array = np.array(states_prime).reshape(state_shape)
-        target_array = self.q_eval(state_array, freeze_flag=q_freeze is not None,
-                                   reshape=action_shape)
-        target_prime_array = self.q_eval(state_prime_array, freeze_flag=q_freeze is not None,
-                                         reshape=action_shape)
+        target_array = self.q_eval(state_array,reshape=action_shape)
+        target_prime_array = self.q_eval(state_prime_array,reshape=action_shape)
 
-        # iterate and update target array with rewards plus
+        # Iterate and update target array with rewards plus
         # the discounted max over the next state's q values
         for i in range(target_prime_array.shape[0]):
-            # place the rewards in the index associated with the action taken.
-            # the rest of the targets are the existing q values (so they aren't involved
-            # when taking the gradient wrt the loss and only the action taken gets updated)
-            target_array[i, actions[i]] = rewards[i] + self._discount*np.max(target_prime_array[i,:])
+            # Place the rewards in the index associated with the action taken.
+            # The rest of the targets are the existing q values (so they aren't
+            # involved when taking the gradient wrt the loss and only the
+            # action taken gets updated)
+            target_array[i, actions[i]] = \
+                rewards[i] + self._discount*np.max(target_prime_array[i,:])
 
         return state_array, target_array
 
-    def train(self, n_episodes, max_steps=1000, epsilon=0.01, epsilon_schedule=10, buffer_size=128,
-              batch_size=16, weight_freeze=None, network=None):
+    def train(self, n_episodes, max_steps=1000, epsilon=0.01, epsilon_schedule=10,
+              buffer_size=128, batch_size=16, weight_freeze=None):
         """
         For each episode, play with the epsilon-greedy policy and record
         the states, actions, and rewards. At each step, use the action value
@@ -251,22 +262,21 @@ class DeepQ(ValueAgent):
         :param buffer_size:
         :param batch_size:
         :param weight_freeze:
-        :param network:
         :return:
         """
-        if self._q_network is None:
-            self._q_network = self.configure(network)
 
         self._buffer_size = buffer_size
+        self._freeze_flag = weight_freeze is not None
+        self._batch_size = batch_size
 
-        if weight_freeze is not None:
-            self._frozen_q_network = self.configure(network)
+        if self._freeze_flag:
+            self._frozen_q_network = self._build(self._q_network.get_config())
             self._set_frozen_weights()
 
-        max_reward = 0.0
+        # Reset train max reward to 0.0
+        self._train_max_reward = 0.0
         total_steps = 0
-        freeze_step = 0
-        loss = 0.0
+        current_swap_step = 0
 
         for i in range(n_episodes):
 
@@ -274,8 +284,8 @@ class DeepQ(ValueAgent):
                 if i % epsilon_schedule == 0:
                     epsilon = epsilon*0.999
 
-            obs = self.reset()
-            obs = obs.reshape([1] + self._state_dim)
+            obs, _ = self.reset()
+            obs = obs.reshape([1] + self._state_shape)
             ep_reward = 0.0
 
             for j in range(max_steps):
@@ -283,37 +293,41 @@ class DeepQ(ValueAgent):
 
                 self.render()
                 action = self.policy(obs, epsilon=epsilon)
-                new_obs, reward, done, info = self.observe(action)
-                new_obs = new_obs.reshape([1] + self._state_dim)
+                new_obs, reward, done, info, _ = self.observe(action)
+                new_obs = new_obs.reshape([1] + self._state_shape)
                 ep_reward += reward
 
-                # add to the replay buffer (evicts an old record if already full)
+                # Add to the replay buffer (evicts an old record if already full)
                 # and sample to generate a batch for building targets and training
                 self._buffer_add((obs, action, reward, new_obs))
-                tuple_batch = self._buffer_batch(batch_size)
-                batch_x, batch_y = self._batch(tuple_batch, weight_freeze)
+                tuple_batch = self._buffer_batch(self._batch_size)
+                batch_x, batch_y = self._batch(tuple_batch)
 
                 # train
-                loss, grads = train.grad(self._q_network, batch_x, batch_y)
-                updates = zip(grads, self._q_network.trainable_variables)
-                self._q_network.optimizer.apply_gradients(updates)
+                self._q_network.train_on_batch(batch_x, batch_y)
 
                 if done:
-                    max_reward = max(max_reward, ep_reward)
-                    print("Current max reward: {}".format(max_reward))
+                    self._train_max_reward = max(self._train_max_reward, ep_reward)
+                    print("Current max reward: {}".format(self._train_max_reward))
                     break
                 else:
                     obs = new_obs
 
             print("Finished game {}...".format(i+1))
-            print("Current loss: {}".format(loss))
+            print("Current q-network metrics: {}".format(
+                    self._q_network.get_metrics_result()
+            ))
 
-            # if we're using frozen weights, check if its time to update
+            # If we're using frozen weights, check if its time to update
             # by dividing the total steps by the weight freeze param
             # and taking the floor. if the integer result is greater
             # than the current freeze_step integer value, then it's time
-            if weight_freeze is not None:
-                current_step = int(total_steps / weight_freeze)
-                if current_step > freeze_step:
+            if self._freeze_flag:
+                episode_swap_step = int(total_steps / weight_freeze)
+                if episode_swap_step > current_swap_step:
                     self._set_frozen_weights()
-                    freeze_step = current_step
+                    current_swap_step += 1
+
+    @property
+    def frozen_q_network(self):
+        return self._frozen_q_network
