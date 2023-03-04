@@ -1,17 +1,18 @@
 
 """
--- Test architectures.
+Training entry point.
 """
 
-config_ = {
-  "env": "CartPole-v0",
-  "train_episodes": 500,
-  "play_episodes": 10,
-  "discount": 0.99,
-  "train_kwargs": {
-    "epsilon": 0.01,
-    "epsilon_schedule": 10
-  }
+defaults = {
+    "env": "CartPole-v0",
+    "train_episodes": 500,
+    "play_episodes": 10,
+    "discount": 0.99,
+    "network": None,
+    "train_kwargs": {
+        "epsilon": 0.01,
+        "epsilon_schedule": 10
+    }
 }
 
 agent_tag = "DeepQ"
@@ -39,16 +40,22 @@ if __name__ == "__main__":
     else:
         print("No agent flag specified. Defaulting to DeepQ agent.")
 
+    # If a configuration file is specified, read and update
+    # the default configuration.
     if args.config is not None:
         with open(args.config) as f:
             config = json.load(f)
-        config_.update(config)
+        defaults.update(config)
 
-    env = gym.make(config_["env"])
+    env = gym.make(defaults.get("env"))
 
-    # instantiate and configure agent, train, and play
-    agent = getattr(agents, agent_tag)(env, config_["discount"])
-    agent.train(config_["train_episodes"], **config_["train_kwargs"])
-    agent.play(config_["play_episodes"])
+    # Instantiate and configure agent, train, and play
+    agent = getattr(agents, agent_tag)(
+            env=env,
+            discount=defaults.get("discount"),
+            config=defaults.get("network")
+    )
+    agent.train(defaults.get("train_episodes"), **defaults.get("train_kwargs"))
+    agent.play(defaults.get("play_episodes"))
 
     print("Finished.")
