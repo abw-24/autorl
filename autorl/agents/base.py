@@ -10,34 +10,38 @@ class GymAgent(object, metaclass=ABCMeta):
     def __init__(self, env, discount=0.99, config=None):
         """
         Base RL agent for Gym RL environments. Does some initial introspection
-        to set the state and action space info needed for model configuration,
-        sets up generic methods and methods to be overwritten by child classes.
+        to set the state and action space info needed for model configuration
+        and sets up generics + abstract methods to be overwritten by children.
         :param env: Gym environment
         :param discount: Reward discounts
+        :param config: Generic dictionary configuration (for e.g. model
+            hyperparameter configuration)
         """
 
         self._env = env
         self._discount = discount
         self._state_space = env.observation_space
         self._action_space = env.action_space
+        self._config = config
+        self._train_max_reward = 0.0
         self._replay_buffer = []
         self._buffer_size = None
-        self._config = config
+        self._batch_size = None
 
-        # check the environment, set shapes and types
+        # Check the environment, set shapes and types
         assert isinstance(self._state_space, spaces.Box), \
             "Expecting a Gym `Box` state space."
 
-        self._state_dim = list(self._state_space.shape)
+        self._state_shape = list(self._state_space.shape)
 
-        n_dim = len(self._state_dim)
+        n_dim = len(self._state_shape)
         if n_dim == 1:
             self._state_type = "vector"
         else:
             self._state_type = "{d}-tensor".format(d=n_dim)
 
         if isinstance(self._action_space, spaces.discrete.Discrete):
-            self._action_dim = int(self._action_space.n)
+            self._action_shape = int(self._action_space.n)
             self._action_type = "discrete"
         else:
             raise NotImplementedError(
@@ -57,7 +61,7 @@ class GymAgent(object, metaclass=ABCMeta):
         return self._env.step(action)
 
     @abstractmethod
-    def _configure(self, config=None):
+    def _build(self, config=None):
         NotImplementedError("Abstract.")
 
     @abstractmethod
@@ -91,13 +95,13 @@ class GymAgent(object, metaclass=ABCMeta):
 
         max_reward = 0.0
         for i in range(n_episodes):
-            obs = self.reset()
+            obs, _ = self.reset()
             ep_reward = 0.0
             for j in range(max_steps):
                 self.render()
-                obs = obs.reshape([1] + self._state_dim)
+                obs = obs.reshape([1] + self._state_shape)
                 action = self.greedy_policy(obs)
-                new_obs, reward, done, info = self.observe(action)
+                new_obs, reward, done, info, _ = self.observe(action)
                 ep_reward += reward
                 if done:
                     max_reward = max(max_reward, ep_reward)
@@ -105,6 +109,8 @@ class GymAgent(object, metaclass=ABCMeta):
                     break
                 else:
                     obs = new_obs
+
+        return max_reward
 
     @property
     def env(self):
@@ -115,9 +121,17 @@ class GymAgent(object, metaclass=ABCMeta):
         return self._replay_buffer
 
     @property
+    def batch_size(self):
+        return self._batch_size
+
+    @property
     def buffer_size(self):
         return self._buffer_size
 
     @buffer_size.setter
     def buffer_size(self, value):
         self._buffer_size = value
+
+    @property
+    def train_max_reward(self):
+        return self._train_max_reward
