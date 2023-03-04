@@ -47,15 +47,15 @@ if __name__ == "__main__":
             config = json.load(f)
         defaults.update(config)
 
-    env = gym.make(defaults["env"])
+    env = gym.make(defaults.get("env"))
 
     # Instantiate and configure agent, train, and play
     agent = getattr(agents, agent_tag)(
             env=env,
-            discount=defaults["discount"],
-            config=defaults["network"]
+            discount=defaults.get("discount"),
+            config=defaults.get("network")
     )
-    agent.train(defaults["train_episodes"], **defaults["train_kwargs"])
-    agent.play(defaults["play_episodes"])
+    agent.train(defaults.get("train_episodes"), **defaults.get("train_kwargs"))
+    agent.play(defaults.get("play_episodes"))
 
     print("Finished.")
