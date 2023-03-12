@@ -73,7 +73,7 @@ class TestDeepQ(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """
-        Load gym environment once for all DeepMC tests
+        Load gym environment once for all DeepQ tests
         """
         cls._env = gym.make("CartPole-v1")
 
