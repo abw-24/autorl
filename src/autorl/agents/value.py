@@ -40,15 +40,17 @@ class ValueAgent(GymAgent, metaclass=ABCMeta):
         input_shape = tuple([None] + self._state_shape)
 
         if self._state_type == "vector":
-            greater_than = lambda x, y: [x, y] if x >= y else [y, x]
+            hidden_dims = sorted(
+                    [self._action_shape * 2, int(self._state_shape[0] / 2)],
+                    reverse=True
+            )
             default_config = {
-                        "hidden_dims": greater_than(self._action_shape * 2,
-                                                    int(self._state_shape[0] / 2)),
+                        "hidden_dims": hidden_dims,
                         "activation": "relu",
                         "output_dim": self._action_shape,
                         "optimizer": {"Adam": {"learning_rate": 0.001}},
                         "loss": {"MeanSquaredError": {}},
-                        "output_activation": "linear"
+                        "output_activation": "relu"
             }
 
             if config is not None:
@@ -146,9 +148,13 @@ class DeepMC(ValueAgent):
         state_array = np.array(states).reshape([len(data)] + self._state_shape)
         target_array = np.zeros((len(data), self._action_shape))
 
-        # iterate over states and construct mc-target
+        # Iterate over states and construct mc-target
         #TODO: refactor to compute targets over whole state trajectory simultaneously
         for i, s in enumerate(states):
+            # Place the rewards in the index associated with the action taken.
+            # The rest of the targets are the existing q values (so they aren't
+            # involved when taking the gradient wrt the loss and only the
+            # action taken gets updated)
             target_vector = self.q_eval(s, reshape=self._action_shape)
             target_vector[actions[i]] = self._return(rewards[i:])
             target_array[i,:] = target_vector
@@ -194,7 +200,7 @@ class DeepMC(ValueAgent):
                     obs = new_obs
 
             # After the episode, prep batch for training, take the grads, and apply.
-            # because the state space is continuous, essentially "first-visit" MC
+            # Because the state space is continuous, essentially "first-visit" MC
             # is all we can really do without bucketing or adding a vector
             # similarity calculation to the processing.
             batch_x, batch_y = self._batch(tuple_batch)
@@ -308,7 +314,6 @@ class DeepQ(ValueAgent):
 
                 if done:
                     self._train_max_reward = max(self._train_max_reward, ep_reward)
-                    print("Current max reward: {}".format(self._train_max_reward))
                     break
                 else:
                     obs = new_obs

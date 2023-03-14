@@ -4,7 +4,7 @@ Training entry point.
 """
 
 defaults = {
-    "env": "CartPole-v0",
+    "env": "CartPole-v1",
     "train_episodes": 500,
     "play_episodes": 10,
     "discount": 0.99,
@@ -23,6 +23,7 @@ if __name__ == "__main__":
     import argparse as ap
     import json
     import gym
+
     import autorl.agents.value as agents
 
     parser = ap.ArgumentParser(description='Deep RL!')
