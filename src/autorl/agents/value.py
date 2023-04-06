@@ -53,6 +53,7 @@ class ValueAgent(GymAgent, metaclass=ABCMeta):
                         "output_activation": "relu"
             }
 
+            # If provided a config, use to update the default values
             if config is not None:
                 default_config.update(config)
 
@@ -64,7 +65,7 @@ class ValueAgent(GymAgent, metaclass=ABCMeta):
             )
 
         elif "tensor" in self._state_type:
-            raise NotImplementedError("Only supporting MLPs right now.")
+            raise NotImplementedError("Only supporting vector inputs currently.")
 
         else:
             raise ValueError("Unrecognized state type.")
@@ -254,7 +255,7 @@ class DeepQ(ValueAgent):
         return state_array, target_array
 
     def train(self, n_episodes, max_steps=1000, epsilon=0.01, epsilon_schedule=10,
-              buffer_size=128, batch_size=16, weight_freeze=None):
+              buffer_size=128, batch_size=16, weight_freeze=5000):
         """
         For each episode, play with the epsilon-greedy policy and record
         the states, actions, and rewards. At each step, use the action value
