@@ -1,12 +1,12 @@
 # autorl (WIP)
 
 - Simple RL agents for use with Gym, Tensorflow 2.x
-- Currently only basic value agents (no explicit policy representation) implemented
+- Depends on [`nets`](https://pages.github.com/abw-24/nets) project
 - Test suite can be run with `pytest` as the test runner:
 ```
 pytest src/autorl --disable-warnings
 ```
-    - Note: Integration tests do not mock data or writing to disk, so the full suite may take a few minutes to run
+- Note: Integration tests do not mock training or writing to disk, so the full suite may take a few minutes to run
     
     
 ### Usage:
