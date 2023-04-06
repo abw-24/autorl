@@ -53,6 +53,7 @@ class ValueAgent(GymAgent, metaclass=ABCMeta):
                         "output_activation": "relu"
             }
 
+            # If provided a config, use to update the default values
             if config is not None:
                 default_config.update(config)
 
@@ -64,7 +65,7 @@ class ValueAgent(GymAgent, metaclass=ABCMeta):
             )
 
         elif "tensor" in self._state_type:
-            raise NotImplementedError("Only supporting MLPs right now.")
+            raise NotImplementedError("Only supporting vector inputs currently.")
 
         else:
             raise ValueError("Unrecognized state type.")
