@@ -1,7 +1,7 @@
 # autorl (WIP)
 
-- Simple RL agents for use with Gym, Tensorflow
-- Currently only value agents (no explicit policy representation) supported
+- Simple RL agents for use with Gym, Tensorflow 2.x
+- Currently only basic value agents (no explicit policy representation) implemented
 - Test suite should be run with `pytest` as the test runner:
 ```
 pytest src/autorl --disable-warnings
