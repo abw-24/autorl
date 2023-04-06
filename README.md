@@ -1,12 +1,14 @@
 # autorl (WIP)
 
-- Simple RL agents for use with Gym, Tensorflow 2.x
+- Simple value-based RL agents for use with Gym, Tensorflow 2.x
+- Environment introspection allows for easy setup
+    - Ultimate goal is to facilitate an agent / bandit learning to train agents
 - Depends on [`nets`](https://pages.github.com/abw-24/nets) project
 - Test suite can be run with `pytest` as the test runner:
 ```
 pytest src/autorl --disable-warnings
 ```
-- Note: Integration tests do not mock training or writing to disk, so the full suite may take a few minutes to run
+- Note: Integration tests do not mock training or saving, so the full suite may take a few minutes to run
     
     
 ### Usage:
@@ -19,9 +21,12 @@ from autorl import DeepQ
 env = gym.make("CartPole-v1")
 # Instantiate an agent (here with the default q-network)
 agent = DeepQ(env=env, discount=0.99)
-# Train
-agent.train(n_episodes=1000, weight_freeze=10)
+# Train a frozen Q agent, freezing weights 100 steps at a time
+agent.train(n_episodes=1000, weight_freeze=100)
 # Play
 agent.play(n_episodes=1)
+
+# Save the q-network for other purposes (e.g. serving)
+agent.q_network.save("./q-network/")
         
 ```
