@@ -2,14 +2,32 @@
 from gym import spaces
 import random
 import numpy as np
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 
 
-class GymAgent(object, metaclass=ABCMeta):
+class GymAgentABC(ABC):
+    """
+    Base agent ABC.
+    """
+
+    @abstractmethod
+    def _build(self, config=None):
+        raise NotImplementedError("Abstract.")
+
+    @abstractmethod
+    def greedy_policy(self, state):
+        raise NotImplementedError("Abstract.")
+
+    @abstractmethod
+    def play(self, n_episodes, max_steps):
+        raise NotImplementedError("Abstract.")
+
+
+class GymAgent(object):
 
     def __init__(self, env, discount=0.99, config=None):
         """
-        Base RL agent for Gym RL environments. Does some initial introspection
+        Base object with common concrete methods. Does some initial introspection
         to set the state and action space info needed for model configuration
         and sets up generics + abstract methods to be overwritten by children.
         :param env: Gym environment
@@ -59,14 +77,6 @@ class GymAgent(object, metaclass=ABCMeta):
     def observe(self, action):
         # convenience accessor for env.step
         return self._env.step(action)
-
-    @abstractmethod
-    def _build(self, config=None):
-        NotImplementedError("Abstract.")
-
-    @abstractmethod
-    def greedy_policy(self, state):
-        NotImplementedError("Abstract.")
 
     def _buffer_add(self, element):
         if self._buffer_size is None:
