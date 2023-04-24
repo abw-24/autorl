@@ -4,11 +4,8 @@
 - Environment introspection allows for easy setup
     - Ultimate goal is to facilitate a bandit learning to train agents
 - Depends on [`nets`](https://pages.github.com/abw-24/nets) project
-- Test suite can be run with `pytest` as the test runner:
-```
-pytest src/autorl --disable-warnings
-```
-- Note: Integration tests do not mock training or saving, so the full suite may take a few minutes to run
+- Test suite can be run with `pytest` as the test runner
+    - Note: Integration tests do not mock training or saving, so the full suite may take a few minutes to run
     
     
 ### Example Usage:
