@@ -2,14 +2,13 @@ import random
 
 import numpy as np
 import tensorflow as tf
-from nets.models.factory import MLPFactory
-from nets.utils import get_obj
+from nets.models.mlp import MLP
+from nets.tests.utils import obj_from_config
 
-from autorl.agents.base import GymAgent
-from abc import ABCMeta
+from autorl.agents.base import GymAgentABC, GymAgent
 
 
-class ValueAgent(GymAgent, metaclass=ABCMeta):
+class ValueAgent(GymAgent, GymAgentABC):
     """
     Base class for action-value-function control algorithms (methods with
     no explicit policy representation).
@@ -40,28 +39,37 @@ class ValueAgent(GymAgent, metaclass=ABCMeta):
         input_shape = tuple([None] + self._state_shape)
 
         if self._state_type == "vector":
+            # Simple defaults for hidden dimensions if not provided (for now)
             hidden_dims = sorted(
                     [self._action_shape * 2, int(self._state_shape[0] / 2)],
                     reverse=True
             )
-            default_config = {
-                        "hidden_dims": hidden_dims,
-                        "activation": "relu",
-                        "output_dim": self._action_shape,
-                        "optimizer": {"Adam": {"learning_rate": 0.001}},
-                        "loss": {"MeanSquaredError": {}},
-                        "output_activation": "relu"
+            defaults = {
+                "hidden_dims": hidden_dims,
+                "activation": "relu",
+                "output_dim": self._action_shape,
+                "optimizer": {"Adam": {"learning_rate": 0.001}},
+                "loss": {"MeanSquaredError": {}},
+                "output_activation": "relu"
             }
 
             # If provided a config, use to update the default values
             if config is not None:
-                default_config.update(config)
+                defaults.update(config)
 
-            network = MLPFactory.apply(default_config)
+            # Pass default config, excluding compilation key/vals
+            exclude = ["optimizer", "loss"]
+            network = MLP.from_config({
+                k: v for k, v in defaults.items() if k not in exclude
+            })
             network.build(input_shape)
             network.compile(
-                    loss=get_obj(tf.keras.losses, default_config.get("loss")),
-                    optimizer=get_obj(tf.keras.optimizers, default_config.get("optimizer"))
+                    loss=obj_from_config(
+                            tf.keras.losses, defaults.get("loss")
+                    ),
+                    optimizer=obj_from_config(
+                            tf.keras.optimizers, defaults.get("optimizer")
+                    )
             )
 
         elif "tensor" in self._state_type:
@@ -167,11 +175,6 @@ class DeepMC(ValueAgent):
         For each episode, play with the epsilon-greedy policy and record
         the states, actions, and rewards. Once the episode is up, use the
         true reward to prep a batch and update the action value network.
-        :param n_episodes:
-        :param max_steps:
-        :param epsilon:
-        :param epsilon_schedule:
-        :return:
         """
         # Reset train max reward to 0.0
         self._train_max_reward = 0.0
@@ -261,15 +264,6 @@ class DeepQ(ValueAgent):
         the states, actions, and rewards. At each step, use the action value
         function and a set of random 4-tuples from the replay buffer to bootstrap
         the q-learning targets and update the network.
-
-        :param n_episodes:
-        :param max_steps:
-        :param epsilon:
-        :param epsilon_schedule:
-        :param buffer_size:
-        :param batch_size:
-        :param weight_freeze:
-        :return:
         """
 
         self._buffer_size = buffer_size

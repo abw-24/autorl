@@ -2,7 +2,7 @@
 
 - Simple value-based RL agents for use with Gym, Tensorflow 2.x
 - Environment introspection allows for easy setup
-    - Ultimate goal is to facilitate an agent / bandit learning to train agents
+    - Ultimate goal is to facilitate a bandit learning to train agents
 - Depends on [`nets`](https://pages.github.com/abw-24/nets) project
 - Test suite can be run with `pytest` as the test runner:
 ```
@@ -11,9 +11,9 @@ pytest src/autorl --disable-warnings
 - Note: Integration tests do not mock training or saving, so the full suite may take a few minutes to run
     
     
-### Usage:
+### Example Usage:
 
-```
+```python
 import gym
 from autorl import DeepQ
 
